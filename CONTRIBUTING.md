@@ -94,4 +94,4 @@ When opening a bug report, please include:
 
 ## Questions?
 
-Open a [Discussion](https://github.com/YOUR_USERNAME/omniscribe/discussions) on GitHub — issues are for bugs and concrete feature requests.
+Open a [Discussion](https://github.com/dagonet/omniscribe/discussions) on GitHub — issues are for bugs and concrete feature requests.
