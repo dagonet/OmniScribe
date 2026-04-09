@@ -1,3 +1,8 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Status: In Development](https://img.shields.io/badge/Status-In%20Development-orange.svg)]()
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
+
 # OmniScribe
 
 **Extract complete transcripts from any video — speech AND on-screen text, combined.**
