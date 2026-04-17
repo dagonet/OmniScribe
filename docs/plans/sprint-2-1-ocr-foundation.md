@@ -34,8 +34,8 @@ Architect runs `mcp__plugin_context7_context7__query-docs` on `paddleocr` and `p
 
 | Path | Purpose | ~LOC |
 |---|---|---|
-| `pyproject.toml` (edit) | Promote `paddlepaddle-gpu>=2.6` from `[gpu]` extra → main deps. Drop the now-empty `[gpu]` extra. Add `numpy>=1.26,<2.1` (or architect Step 0 window) to main deps. `opencv-python-headless`, `paddleocr`, `rapidfuzz` stay in main — no `[ocr]` extra split (paddleocr pulls non-headless opencv-python transitively; dual-install conflict). | ~10 diff |
-| `.env.example` (edit) | Add `OMNI_OCR_DEVICE=cuda`. Update `OMNI_OCR_LANGUAGE` comment to clarify PaddleOCR lang string (e.g., `en`, `french`), not ISO 639 — unless Step 0 item 6 decides a mapping is preferable. | +2 |
+| `pyproject.toml` (edit) | Promote `paddlepaddle-gpu>=2.6,<3.0` from `[gpu]` extra → main deps. Drop the now-empty `[gpu]` extra. Add `numpy>=1.26,<2.0` to main deps (numpy 2.0 breaks Paddle 2.6 ABI — Step 0 item 8). Add `[tool.uv.sources] paddlepaddle-gpu = { index = "paddle-cu123" }` + `[[tool.uv.index]] name = "paddle-cu123"` pointing at `https://www.paddlepaddle.org.cn/packages/stable/cu123/` with `explicit = true` (Step 0 item 1 — CUDA 12 wheel not on PyPI). `opencv-python-headless>=4.10,<5.0`, `paddleocr>=2.9,<3.0`, `rapidfuzz>=3.9,<4.0` stay in main — no `[ocr]` extra split (paddleocr pulls non-headless opencv-python transitively; dual-install conflict). | ~15 diff |
+| `.env.example` (edit) | Add `OMNI_OCR_DEVICE=cuda`. Update `OMNI_OCR_LANGUAGE` comment: `# PaddleOCR lang key, not ISO 639 — see https://github.com/PaddlePaddle/PaddleOCR/blob/v2.9.1/paddleocr.py for full list`. | +2 |
 | `src/omniscribe/config.py` (edit) | Add `ocr_device: str = "cuda"` between `ocr_min_confidence` and `# ── Platform ──`. | +2 |
 | `src/omniscribe/ocr/__init__.py` | `"""OCR (Optical Character Recognition) subpackage."""` — docstring only, mirrors `asr/__init__.py`. | 1 |
 | `src/omniscribe/ocr/frame_sampler.py` | `sample_frames(video_path: Path, fps: float) -> Iterator[tuple[float, np.ndarray]]`. Uses `cv2.VideoCapture(str(video_path.resolve()))` (str cast + UNC normalisation). Stride = `max(1, round(native_fps / fps))`, yields `(timestamp, bgr_frame)`. Terminates cleanly on `cap.read()` returning `(False, _)`. Raises `OmniScribeError` only if `cap.isOpened()` false. `try/finally` `cap.release()`. | ~55 |
@@ -54,14 +54,16 @@ Architect runs `mcp__plugin_context7_context7__query-docs` on `paddleocr` and `p
 - **Fixed-interval sampling only** in 2.1. Scene-change deferred.
 - **Interleaving strategy:** plain `sorted(..., key=lambda s: s.start)`. Stable sort + append-order determinism.
 - **`--ocr/--no-ocr` resolution:** Typer flag is `Optional[bool] = None`; runtime merges with config. Explicit CLI flag wins.
-- **`numpy>=1.26,<2.1` pinned explicitly** (or architect Step 0 window).
+- **`numpy>=1.26,<2.0` pinned explicitly** (Step 0 item 8 — numpy 2.0 ABI break against Paddle 2.6 wheels).
 - **No runtime CUDA fallback.** `ocr_device="cuda"` init failure → `OmniScribeError`. User flips env or disables OCR.
 - **Mock patch targets at import site** — `omniscribe.ocr.paddle_ocr.PaddleOCR`, not `paddleocr.PaddleOCR`.
 - **pytest `--strict-markers`** remains authoritative.
 
 ## Acceptance criteria (Sprint 2.1 only)
 
-- [ ] `uv sync` installs `paddlepaddle-gpu>=2.6` + `opencv-python-headless` + pinned `numpy` cleanly.
+- [ ] `uv sync` installs `paddlepaddle-gpu>=2.6` from the `paddle-cu123` index + `opencv-python-headless` + `numpy>=1.26,<2.0` cleanly.
+- [ ] Install-time smoke check (CUDA): `python -c "import paddle; paddle.utils.run_check()"` reports "PaddlePaddle works well on 1 GPU"; `python -c "import torch; print(torch.cuda.is_available())"` prints `True` in the same venv.
+- [ ] Install-time smoke check (CPU fallback on GPU wheel): `python -c "import paddle; paddle.set_device('cpu'); paddle.utils.run_check()"` reports "PaddlePaddle works well on CPU".
 - [ ] `omniscribe transcribe <mp4> --ocr` → JSON with ≥1 `ON-SCREEN` segment alongside `SPEECH`, sorted by `start` (manual acceptance on RTX 4090).
 - [ ] `omniscribe transcribe <mp4> --no-ocr` → identical JSON to Phase 1 (`PaddleOCREngine` never instantiated, verifiable via mock).
 - [ ] `OMNI_OCR_ENABLED=false` without CLI flag ≡ `--no-ocr`; explicit `--ocr` overrides env.
