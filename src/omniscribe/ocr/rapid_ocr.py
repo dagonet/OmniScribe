@@ -1,0 +1,104 @@
+"""RapidOCR engine wrapper (ONNX runtime; GPU or CPU).
+
+Mirrors the shape of :class:`omniscribe.asr.whisper.WhisperTranscriber`: lazy
+first-call model init, config pulled from :class:`OmniScribeConfig`, returns
+:class:`TranscriptSegment` instances tagged ``source="ON-SCREEN"``.
+
+Imports ``RapidOCR`` at module top so tests can patch it at the import site
+(``omniscribe.ocr.rapid_ocr.RapidOCR``). No runtime CUDA→CPU fallback — a failing
+GPU init surfaces as the native library exception (wrapped by the caller).
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+from rapidocr import LangRec, RapidOCR
+
+from omniscribe.errors import OmniScribeError
+from omniscribe.ocr.frame_sampler import sample_frames
+from omniscribe.output import TranscriptSegment
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from omniscribe.config import OmniScribeConfig
+
+logger = logging.getLogger(__name__)
+
+
+class RapidOCREngine:
+    """Lazy-init RapidOCR wrapper that extracts on-screen text from a video.
+
+    The underlying :class:`rapidocr.RapidOCR` engine is constructed on the first
+    :meth:`extract` call and reused across subsequent calls. GPU vs. CPU is
+    selected via ``config.ocr_device`` (``"cuda"`` → ``use_cuda=True``; anything
+    else → ``use_cuda=False``).
+
+    ``config.ocr_language`` is coerced to a :class:`rapidocr.LangRec` enum before
+    being handed to the engine — the Python ``params`` dict path does strict enum
+    validation (unlike the YAML config path which accepts strings). Unsupported
+    values raise :class:`OmniScribeError` at first :meth:`extract` call.
+    """
+
+    def __init__(self, config: OmniScribeConfig) -> None:
+        self._config = config
+        self._engine: RapidOCR | None = None
+
+    def _ensure_loaded(self) -> RapidOCR:
+        if self._engine is None:
+            try:
+                lang = LangRec(self._config.ocr_language)
+            except ValueError as exc:
+                supported = [m.value for m in LangRec]
+                raise OmniScribeError(
+                    f"Unsupported OCR language {self._config.ocr_language!r}. "
+                    f"Supported values: {supported}"
+                ) from exc
+
+            use_cuda = self._config.ocr_device == "cuda"
+            logger.info(
+                "Loading RapidOCR on %s — first run may download ~15 MB of ONNX models",
+                self._config.ocr_device,
+            )
+            params: dict[str, object] = {
+                "EngineConfig.onnxruntime.use_cuda": use_cuda,
+                "EngineConfig.onnxruntime.cuda_ep_cfg.device_id": 0,
+                "Rec.lang_type": lang,
+                "Det.lang_type": lang,
+            }
+            self._engine = RapidOCR(params=params)
+        return self._engine
+
+    def extract(self, video_path: Path) -> list[TranscriptSegment]:
+        """Sample frames from ``video_path`` and return on-screen text segments.
+
+        Each yielded RapidOCR result contributes zero or more
+        :class:`TranscriptSegment` instances — one per detected text box whose
+        score meets ``config.ocr_min_confidence``. ``start == end`` equals the
+        frame timestamp (sampled text has no intrinsic duration).
+        """
+        engine = self._ensure_loaded()
+        threshold = self._config.ocr_min_confidence
+        language = self._config.ocr_language
+
+        segments: list[TranscriptSegment] = []
+        for timestamp, frame in sample_frames(video_path, self._config.ocr_sample_fps):
+            result = engine(frame)
+            texts = getattr(result, "txts", ()) or ()
+            scores = getattr(result, "scores", ()) or ()
+            for text, score in zip(texts, scores, strict=False):
+                if score < threshold:
+                    continue
+                segments.append(
+                    TranscriptSegment(
+                        start=timestamp,
+                        end=timestamp,
+                        text=text,
+                        source="ON-SCREEN",
+                        confidence=float(score),
+                        language=language,
+                    )
+                )
+        return segments
