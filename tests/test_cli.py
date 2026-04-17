@@ -32,27 +32,12 @@ def test_transcribe_help() -> None:
     assert "--language" in result.output
 
 
-def _patched_pipeline(
-    tmp_path: Path,
-    segments: list[TranscriptSegment] | None = None,
-    detected_language: str = "en",
-):
-    """Return a patch context that mocks every external boundary."""
-    video_path = tmp_path / "video.mp4"
-    video_path.write_bytes(b"fake")
-    audio_path = tmp_path / "audio.wav"
-    audio_path.write_bytes(b"fake")
-
-    download_patch = patch(
-        "omniscribe.cli.download_video",
-        return_value=video_path,
-    )
-    extract_patch = patch(
-        "omniscribe.cli.extract_audio",
-        return_value=audio_path,
-    )
+def _patched_pipeline(tmp_path: Path):
+    """Return patch context managers that mock every external boundary."""
+    download_patch = patch("omniscribe.cli.download_video", return_value=tmp_path / "video.mp4")
+    extract_patch = patch("omniscribe.cli.extract_audio", return_value=tmp_path / "audio.wav")
     whisper_patch = patch("omniscribe.cli.WhisperTranscriber")
-    return download_patch, extract_patch, whisper_patch, video_path, audio_path
+    return download_patch, extract_patch, whisper_patch
 
 
 def test_transcribe_writes_json_with_segments(tmp_path: Path, monkeypatch) -> None:
@@ -64,7 +49,7 @@ def test_transcribe_writes_json_with_segments(tmp_path: Path, monkeypatch) -> No
         TranscriptSegment(start=0.0, end=1.0, text="hello", language="en"),
     ]
 
-    dl, ex, wh, _, _ = _patched_pipeline(tmp_path)
+    dl, ex, wh = _patched_pipeline(tmp_path)
     with dl, ex, wh as mock_whisper_cls:
         mock_whisper_cls.return_value.transcribe.return_value = (segments, "en")
         result = CliRunner().invoke(app, ["transcribe", "fake.mp4", "--output", str(output)])
@@ -83,7 +68,7 @@ def test_transcribe_silent_video_produces_zero_segment_transcript(
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
     output = tmp_path / "silent.json"
 
-    dl, ex, wh, _, _ = _patched_pipeline(tmp_path)
+    dl, ex, wh = _patched_pipeline(tmp_path)
     with dl, ex, wh as mock_whisper_cls:
         mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
         result = CliRunner().invoke(app, ["transcribe", "fake.mp4", "--output", str(output)])
@@ -100,7 +85,7 @@ def test_transcribe_cleans_temp_dir_by_default(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "false")
     output = tmp_path / "out.json"
 
-    dl, ex, wh, _, _ = _patched_pipeline(tmp_path)
+    dl, ex, wh = _patched_pipeline(tmp_path)
     with dl, ex, wh as mock_whisper_cls:
         mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
         # Seed the temp dir so the cleanup branch has something to remove.
@@ -119,7 +104,7 @@ def test_transcribe_keeps_temp_dir_when_configured(tmp_path: Path, monkeypatch) 
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
-    dl, ex, wh, _, _ = _patched_pipeline(tmp_path)
+    dl, ex, wh = _patched_pipeline(tmp_path)
     with dl, ex, wh as mock_whisper_cls:
         mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
         temp_dir.mkdir(parents=True, exist_ok=True)
@@ -148,11 +133,8 @@ def test_transcribe_omniscribe_error_exits_nonzero(tmp_path: Path, monkeypatch) 
         )
 
     assert result.exit_code == 1
-    # The error is printed on stderr via typer.secho(..., err=True); CliRunner
-    # captures both streams together in `output` by default.
-    assert "ffmpeg not found on PATH" in result.output or "ffmpeg not found on PATH" in (
-        result.stderr if hasattr(result, "stderr") else ""
-    )
+    # CliRunner merges stderr into `result.output` by default.
+    assert "ffmpeg not found on PATH" in result.output
 
 
 def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkeypatch) -> None:
@@ -160,7 +142,7 @@ def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkey
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
-    dl, ex, wh, _, _ = _patched_pipeline(tmp_path)
+    dl, ex, wh = _patched_pipeline(tmp_path)
     with dl, ex, wh as mock_whisper_cls:
         mock_whisper_cls.return_value.transcribe.return_value = ([], "fr")
         result = CliRunner().invoke(

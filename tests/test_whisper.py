@@ -159,6 +159,28 @@ def test_transcribe_logs_info_before_model_init(
     assert any("Loading Whisper model" in m for m in info_messages)
 
 
+def test_transcribe_handles_segment_without_avg_logprob(tmp_path: Path) -> None:
+    config = _make_config()
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"riff-fake")
+
+    bare_segment = SimpleNamespace(start=0.0, end=1.0, text="hi")
+    fake_pipeline = MagicMock()
+    fake_pipeline.transcribe.return_value = (iter([bare_segment]), SimpleNamespace(language="en"))
+
+    with (
+        patch("omniscribe.asr.whisper.WhisperModel"),
+        patch(
+            "omniscribe.asr.whisper.BatchedInferencePipeline",
+            return_value=fake_pipeline,
+        ),
+    ):
+        segments, _ = WhisperTranscriber(config).transcribe(audio)
+
+    assert len(segments) == 1
+    assert segments[0].confidence is None
+
+
 def test_transcribe_reuses_pipeline_across_calls(tmp_path: Path) -> None:
     config = _make_config()
     audio = tmp_path / "audio.wav"

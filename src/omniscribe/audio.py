@@ -48,6 +48,9 @@ def extract_audio(video: Path, out: Path) -> Path:
     try:
         subprocess.run(cmd, check=True, capture_output=True, shell=False)
     except subprocess.CalledProcessError as e:
-        last_line = e.stderr.decode(errors="replace").splitlines()[-1] if e.stderr else str(e)
-        raise OmniScribeError(f"ffmpeg failed: {last_line}") from None
+        if e.stderr:
+            detail = e.stderr.decode(errors="replace").splitlines()[-1]
+        else:
+            detail = f"exit status {e.returncode} with no stderr output"
+        raise OmniScribeError(f"ffmpeg failed: {detail}") from None
     return out
