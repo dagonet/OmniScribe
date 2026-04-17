@@ -18,6 +18,7 @@ from rapidocr import LangRec, RapidOCR
 
 from omniscribe.errors import OmniScribeError
 from omniscribe.ocr.frame_sampler import sample_frames
+from omniscribe.ocr.preprocessor import preprocess
 from omniscribe.output import TranscriptSegment
 
 if TYPE_CHECKING:
@@ -97,7 +98,7 @@ class RapidOCREngine:
         segments: list[TranscriptSegment] = []
         for timestamp, frame in sample_frames(video_path, self._config.ocr_sample_fps):
             frame_count += 1
-            result = engine(frame)
+            result = engine(preprocess(frame))
             texts = getattr(result, "txts", ()) or ()
             scores = getattr(result, "scores", ()) or ()
             for text, score in zip(texts, scores, strict=False):
