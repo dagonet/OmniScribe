@@ -282,6 +282,7 @@ def test_transcribe_ocr_dedup_collapses_duplicate_overlays(tmp_path: Path, monke
     """Three identical ON-SCREEN segments + 1 SPEECH → 1 collapsed + 1 SPEECH."""
     monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
     output = tmp_path / "out.json"
 
     speech = [TranscriptSegment(start=0.0, end=1.0, text="hello", language="en")]

@@ -101,17 +101,13 @@ def dedup_segments(
     out: list[TranscriptSegment] = []
     cluster: list[TranscriptSegment] = []
 
-    def _flush() -> None:
-        if not cluster:
-            return
-        collapsed = _flush_cluster(cluster, min_duration)
-        if collapsed is not None:
-            out.append(collapsed)
-        cluster.clear()
-
     for seg in segments:
         if seg.source != "ON-SCREEN":
-            _flush()
+            if cluster:
+                collapsed = _flush_cluster(cluster, min_duration)
+                if collapsed is not None:
+                    out.append(collapsed)
+                cluster = []
             out.append(seg)
             continue
 
@@ -125,8 +121,13 @@ def dedup_segments(
         if similarity >= threshold and gap <= gap_tolerance:
             cluster.append(seg)
         else:
-            _flush()
-            cluster.append(seg)
+            collapsed = _flush_cluster(cluster, min_duration)
+            if collapsed is not None:
+                out.append(collapsed)
+            cluster = [seg]
 
-    _flush()
+    if cluster:
+        collapsed = _flush_cluster(cluster, min_duration)
+        if collapsed is not None:
+            out.append(collapsed)
     return out
