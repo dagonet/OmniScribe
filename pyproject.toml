@@ -103,6 +103,9 @@ ignore = [
     "TC002",
     "TC003",
 ]
+"src/omniscribe/cli.py" = [
+    "B008",  # typer.Option / typer.Argument defaults are the idiomatic Typer pattern
+]
 
 [tool.ruff.lint.isort]
 known-first-party = ["omniscribe"]
