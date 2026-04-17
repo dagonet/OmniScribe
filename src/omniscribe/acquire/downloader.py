@@ -6,7 +6,8 @@ import logging
 import re
 from pathlib import Path
 
-import yt_dlp
+from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 
 from omniscribe.errors import OmniScribeError
 
@@ -20,8 +21,9 @@ def download_video(source: str, temp_dir: Path) -> Path:
 
     If ``source`` is an existing local file, it is returned unchanged.
     If it is an http(s) URL, yt-dlp downloads it into ``temp_dir`` and the
-    resulting path is returned. Any yt-dlp failure is re-raised as an
-    :class:`OmniScribeError` with a single-line message (no traceback chain).
+    resulting path is returned. Any yt-dlp failure — as well as an unrecognised
+    source string — is raised as :class:`OmniScribeError` with a single-line
+    message (no traceback chain) so the CLI can surface it cleanly.
     """
     if Path(source).is_file():
         logger.debug("Using local file passthrough: %s", source)
@@ -35,10 +37,10 @@ def download_video(source: str, temp_dir: Path) -> Path:
             "no_warnings": True,
         }
         try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(source, download=True)
                 return Path(ydl.prepare_filename(info))
-        except yt_dlp.utils.DownloadError as e:
+        except DownloadError as e:
             raise OmniScribeError(f"Download failed: {e}") from None
 
-    raise ValueError(f"Invalid source: {source!r} is neither a file nor an http(s) URL")
+    raise OmniScribeError(f"Invalid source: {source!r} is neither a file nor an http(s) URL")

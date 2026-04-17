@@ -42,7 +42,6 @@ dependencies = [
     "pydantic-settings>=2.0",
     "rapidfuzz>=3.0",
     "rich>=13.0",
-    "pydub>=0.25",
 ]
 
 [project.optional-dependencies]
@@ -63,10 +62,10 @@ dev = [
 omniscribe = "omniscribe.cli:app"
 
 [project.urls]
-Homepage = "https://github.com/YOUR_USERNAME/omniscribe"
-Repository = "https://github.com/YOUR_USERNAME/omniscribe"
-Issues = "https://github.com/YOUR_USERNAME/omniscribe/issues"
-Changelog = "https://github.com/YOUR_USERNAME/omniscribe/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/dagonet/omniscribe"
+Repository = "https://github.com/dagonet/omniscribe"
+Issues = "https://github.com/dagonet/omniscribe/issues"
+Changelog = "https://github.com/dagonet/omniscribe/blob/main/CHANGELOG.md"
 
 [build-system]
 requires = ["hatchling"]

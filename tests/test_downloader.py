@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-import yt_dlp
+from yt_dlp.utils import DownloadError
 
 from omniscribe.acquire.downloader import download_video
 from omniscribe.errors import OmniScribeError
@@ -20,7 +20,7 @@ from omniscribe.errors import OmniScribeError
 
 def test_local_file_passthrough(silence_wav_path: Path, tmp_path: Path) -> None:
     """Local files are returned unchanged; YoutubeDL is never instantiated."""
-    with patch("omniscribe.acquire.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+    with patch("omniscribe.acquire.downloader.YoutubeDL") as mock_ydl:
         result = download_video(str(silence_wav_path), tmp_path / "dl")
 
     assert result == silence_wav_path
@@ -29,7 +29,7 @@ def test_local_file_passthrough(silence_wav_path: Path, tmp_path: Path) -> None:
 
 def test_url_download(tmp_path: Path) -> None:
     """HTTP URLs are passed to yt-dlp and the prepared filename is returned."""
-    with patch("omniscribe.acquire.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+    with patch("omniscribe.acquire.downloader.YoutubeDL") as mock_ydl:
         instance = MagicMock()
         mock_ydl.return_value.__enter__.return_value = instance
         instance.extract_info.return_value = {"id": "abc", "ext": "mp4"}
@@ -41,17 +41,18 @@ def test_url_download(tmp_path: Path) -> None:
     instance.extract_info.assert_called_once_with("https://example.com/v/abc", download=True)
 
 
-def test_invalid_source_raises_value_error(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="neither a file nor an http"):
+def test_invalid_source_raises_omniscribe_error(tmp_path: Path) -> None:
+    """Unrecognised sources raise OmniScribeError so the CLI surfaces one line."""
+    with pytest.raises(OmniScribeError, match="neither a file nor an http"):
         download_video("not a url or file", tmp_path / "dl")
 
 
 def test_download_error_wrapped_as_omniscribe_error(tmp_path: Path) -> None:
     """yt-dlp DownloadError is surfaced as a clean single-line OmniScribeError."""
-    with patch("omniscribe.acquire.downloader.yt_dlp.YoutubeDL") as mock_ydl:
+    with patch("omniscribe.acquire.downloader.YoutubeDL") as mock_ydl:
         instance = MagicMock()
         mock_ydl.return_value.__enter__.return_value = instance
-        instance.extract_info.side_effect = yt_dlp.utils.DownloadError("blocked")
+        instance.extract_info.side_effect = DownloadError("blocked")
 
         with pytest.raises(OmniScribeError) as exc_info:
             download_video("https://example.com/v/abc", tmp_path / "dl")

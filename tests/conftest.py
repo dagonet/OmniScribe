@@ -44,10 +44,12 @@ def silence_wav_path(tmp_path: Path) -> Path:
 
 @pytest.fixture(autouse=True)
 def reset_logging() -> Iterator[None]:
-    """Clear root logger handlers before each test to prevent CliRunner state leak."""
+    """Clear root logger handlers + level around each test (CliRunner isolation)."""
     root = logging.getLogger()
-    saved = root.handlers[:]
+    saved_handlers = root.handlers[:]
+    saved_level = root.level
     root.handlers.clear()
     yield
     root.handlers.clear()
-    root.handlers.extend(saved)
+    root.handlers.extend(saved_handlers)
+    root.level = saved_level

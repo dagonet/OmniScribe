@@ -22,7 +22,7 @@ def test_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
     cfg = OmniScribeConfig()
 
-    assert cfg.whisper_model == "large-v3"
+    assert cfg.whisper_model == "large-v3-turbo"
     assert cfg.whisper_device == "cuda"
     assert cfg.whisper_compute_type == "float16"
     assert cfg.whisper_batch_size == 16

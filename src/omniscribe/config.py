@@ -24,7 +24,7 @@ class OmniScribeConfig(BaseSettings):
     )
 
     # ── ASR ──────────────────────────────────────────────
-    whisper_model: str = "large-v3"
+    whisper_model: str = "large-v3-turbo"
     whisper_device: str = "cuda"
     whisper_compute_type: str = "float16"
     whisper_batch_size: int = 16
