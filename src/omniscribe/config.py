@@ -35,6 +35,7 @@ class OmniScribeConfig(BaseSettings):
     ocr_language: str = "en"
     ocr_sample_fps: float = 1.0
     ocr_min_confidence: float = 0.6
+    ocr_device: str = "cuda"
 
     # ── Platform ─────────────────────────────────────────
     platform_profile: str = "auto"

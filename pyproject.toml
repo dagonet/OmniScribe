@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Extract complete video transcripts — speech AND on-screen text — from TikTok, YouTube, Instagram and more."
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+# onnxruntime-gpu 1.24.x publishes Windows wheels only for cp311/cp312 today.
+# Revisit the upper bound once ORT ships cp313 Windows wheels.
+requires-python = ">=3.11,<3.13"
 authors = [
     { name = "dagonet" },
 ]
@@ -14,7 +16,7 @@ keywords = [
     "ocr",
     "video-processing",
     "whisper",
-    "paddleocr",
+    "rapidocr",
     "tiktok",
     "youtube",
     "instagram",
@@ -35,19 +37,17 @@ classifiers = [
 ]
 dependencies = [
     "faster-whisper>=1.1.0",
-    "paddleocr>=2.9",
+    "rapidocr>=3.8,<4.0",
+    "onnxruntime-gpu>=1.18,<2.0",
+    "numpy>=1.26,<3.0",
     "yt-dlp>=2024.0",
-    "opencv-python-headless>=4.9",
     "typer[all]>=0.12",
     "pydantic-settings>=2.0",
-    "rapidfuzz>=3.0",
+    "rapidfuzz>=3.9,<4.0",
     "rich>=13.0",
 ]
 
 [project.optional-dependencies]
-gpu = [
-    "paddlepaddle-gpu>=2.6",
-]
 llm = [
     "ollama>=0.4",
 ]
@@ -121,7 +121,7 @@ disallow_untyped_defs = true
 [[tool.mypy.overrides]]
 module = [
     "faster_whisper.*",
-    "paddleocr.*",
+    "rapidocr.*",
     "cv2.*",
     "yt_dlp.*",
     "pydub.*",
