@@ -40,11 +40,16 @@ class RapidOCREngine:
     being handed to the engine — the Python ``params`` dict path does strict enum
     validation (unlike the YAML config path which accepts strings). Unsupported
     values raise :class:`OmniScribeError` at first :meth:`extract` call.
+
+    After each :meth:`extract` call, ``self.last_frame_count`` holds the number of
+    frames yielded by the sampler — used by the CLI for the
+    ``"OCR: N segments from M frames"`` log line.
     """
 
     def __init__(self, config: OmniScribeConfig) -> None:
         self._config = config
         self._engine: RapidOCR | None = None
+        self.last_frame_count: int = 0
 
     def _ensure_loaded(self) -> RapidOCR:
         if self._engine is None:
@@ -68,7 +73,12 @@ class RapidOCREngine:
                 "Rec.lang_type": lang,
                 "Det.lang_type": lang,
             }
-            self._engine = RapidOCR(params=params)
+            try:
+                self._engine = RapidOCR(params=params)
+            except Exception as exc:
+                raise OmniScribeError(
+                    f"Failed to initialize RapidOCR on {self._config.ocr_device}: {exc}"
+                ) from exc
         return self._engine
 
     def extract(self, video_path: Path) -> list[TranscriptSegment]:
@@ -83,8 +93,10 @@ class RapidOCREngine:
         threshold = self._config.ocr_min_confidence
         language = self._config.ocr_language
 
+        frame_count = 0
         segments: list[TranscriptSegment] = []
         for timestamp, frame in sample_frames(video_path, self._config.ocr_sample_fps):
+            frame_count += 1
             result = engine(frame)
             texts = getattr(result, "txts", ()) or ()
             scores = getattr(result, "scores", ()) or ()
@@ -101,4 +113,5 @@ class RapidOCREngine:
                         language=language,
                     )
                 )
+        self.last_frame_count = frame_count
         return segments

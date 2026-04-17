@@ -49,7 +49,7 @@ def sample_frames(video_path: Path, fps: float) -> Iterator[tuple[float, np.ndar
         if not cap.isOpened():
             raise OmniScribeError(f"Failed to open video for OCR sampling: {video_path}")
 
-        native_fps = float(cap.get(cv2.CAP_PROP_FPS)) or 0.0
+        native_fps = cap.get(cv2.CAP_PROP_FPS)
         if native_fps <= 0.0:
             raise OmniScribeError(
                 f"Video reports non-positive native FPS ({native_fps}); cannot sample."

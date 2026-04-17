@@ -262,3 +262,54 @@ def test_extract_raises_on_unsupported_language(tmp_path: Path) -> None:
 
     # Enum coercion fails *before* RapidOCR is constructed.
     mock_rapid_cls.assert_not_called()
+
+
+def test_extract_wraps_engine_init_failure_as_omniscribe_error(tmp_path: Path) -> None:
+    """RapidOCR constructor failure (e.g. missing CUDA provider, broken ONNX model)
+    must surface as ``OmniScribeError`` so the CLI's ``except`` handler can catch it
+    and render a clean single-line error instead of a traceback.
+    """
+    config = _make_config()
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    with (
+        patch(
+            "omniscribe.ocr.rapid_ocr.RapidOCR",
+            side_effect=RuntimeError("CUDAExecutionProvider not available"),
+        ),
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+        pytest.raises(OmniScribeError, match="Failed to initialize RapidOCR"),
+    ):
+        RapidOCREngine(config).extract(video)
+
+
+def test_extract_records_last_frame_count(tmp_path: Path) -> None:
+    """``last_frame_count`` must equal the number of frames the sampler yielded
+    (used by the CLI's ``"OCR: N segments from M frames"`` log line).
+    """
+    config = _make_config()
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    sampled_frames = [
+        (0.0, _fake_frame()),
+        (1.0, _fake_frame()),
+        (2.0, _fake_frame()),
+    ]
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "omniscribe.ocr.rapid_ocr.sample_frames",
+            return_value=iter(sampled_frames),
+        ),
+    ):
+        ocr = RapidOCREngine(config)
+        assert ocr.last_frame_count == 0  # initialized on __init__
+        ocr.extract(video)
+
+    assert ocr.last_frame_count == 3

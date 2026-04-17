@@ -78,6 +78,21 @@ def test_sample_frames_raises_when_capture_fails_to_open(tmp_path: Path) -> None
         list(sample_frames(video, fps=1.0))
 
 
+def test_sample_frames_raises_when_native_fps_is_zero(tmp_path: Path) -> None:
+    """A video that reports ``CAP_PROP_FPS == 0.0`` would cause a divide-by-zero
+    in the stride calculation; the guard must surface it as ``OmniScribeError``.
+    """
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+    cap = _make_fake_capture(native_fps=0.0, frame_count=10)
+
+    with (
+        patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap),
+        pytest.raises(OmniScribeError, match="non-positive native FPS"),
+    ):
+        list(sample_frames(video, fps=1.0))
+
+
 def test_sample_frames_releases_capture_on_exception(tmp_path: Path) -> None:
     video = tmp_path / "v.mp4"
     video.write_bytes(b"fake")

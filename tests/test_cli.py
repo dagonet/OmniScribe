@@ -211,6 +211,9 @@ def test_transcribe_ocr_flag_interleaves_segments(tmp_path: Path, monkeypatch) -
     (ocr_cfg,), _ = mock_ocr_cls.call_args
     assert ocr_cfg.ocr_language == "ch"
 
+    # RapidOCREngine.extract() was actually invoked (not just constructed).
+    mock_ocr_cls.return_value.extract.assert_called_once()
+
     # Output is interleaved by start.
     restored = Transcript.model_validate_json(output.read_text(encoding="utf-8"))
     assert [s.source for s in restored.segments] == [

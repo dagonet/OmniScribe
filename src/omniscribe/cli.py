@@ -104,8 +104,13 @@ def transcribe(
         speech_segments, detected_language = WhisperTranscriber(config).transcribe(audio_path)
 
         if ocr_active:
-            ocr_segments = RapidOCREngine(config).extract(video_path)
-            logger.info("OCR: %d segments from video", len(ocr_segments))
+            ocr_engine = RapidOCREngine(config)
+            ocr_segments = ocr_engine.extract(video_path)
+            logger.info(
+                "OCR: %d segments from %d frames",
+                len(ocr_segments),
+                ocr_engine.last_frame_count,
+            )
             segments = merge_channels(speech_segments, ocr_segments)
         else:
             segments = speech_segments
