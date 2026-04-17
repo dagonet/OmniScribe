@@ -16,7 +16,8 @@ from omniscribe.asr.whisper import WhisperTranscriber
 from omniscribe.audio import extract_audio
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
-from omniscribe.output import Transcript, write_json
+from omniscribe.ocr.rapid_ocr import RapidOCREngine
+from omniscribe.output import Transcript, merge_channels, write_json
 
 app = typer.Typer(
     name="omniscribe",
@@ -76,17 +77,39 @@ def transcribe(
         "--language",
         help="Force source language (e.g. 'en'); auto-detect when omitted.",
     ),
+    ocr: bool | None = typer.Option(
+        None,
+        "--ocr/--no-ocr",
+        help="Enable or disable on-screen-text OCR (overrides OMNI_OCR_ENABLED).",
+    ),
+    ocr_language: str | None = typer.Option(
+        None,
+        "--ocr-language",
+        help="RapidOCR LangRec value (e.g. 'en', 'ch', 'japan'); overrides OMNI_OCR_LANGUAGE.",
+    ),
 ) -> None:
     """Download (if URL), extract audio, transcribe, and write JSON."""
     config: OmniScribeConfig = ctx.obj["config"]
     if language is not None:
         config = config.model_copy(update={"whisper_language": language})
+    if ocr_language is not None:
+        config = config.model_copy(update={"ocr_language": ocr_language})
+
+    ocr_active = ocr if ocr is not None else config.ocr_enabled
 
     temp_dir = config.temp_dir
     try:
         video_path = download_video(source, temp_dir)
         audio_path = extract_audio(video_path, temp_dir / "audio.wav")
-        segments, detected_language = WhisperTranscriber(config).transcribe(audio_path)
+        speech_segments, detected_language = WhisperTranscriber(config).transcribe(audio_path)
+
+        if ocr_active:
+            ocr_segments = RapidOCREngine(config).extract(video_path)
+            logger.info("OCR: %d segments from video", len(ocr_segments))
+            segments = merge_channels(speech_segments, ocr_segments)
+        else:
+            segments = speech_segments
+
         transcript = Transcript(segments=segments, language=detected_language)
         write_json(transcript, output)
         _console.print(f"[green]Wrote {len(segments)} segment(s) to {output}[/green]")

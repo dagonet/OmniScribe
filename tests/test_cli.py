@@ -13,6 +13,10 @@ from omniscribe.errors import OmniScribeError
 from omniscribe.output import Transcript, TranscriptSegment
 
 
+def _ocr_seg(start: float, text: str) -> TranscriptSegment:
+    return TranscriptSegment(start=start, end=start, text=text, source="ON-SCREEN", language="en")
+
+
 def test_version_flag_prints_version_and_exits() -> None:
     result = CliRunner().invoke(app, ["--version"])
     assert result.exit_code == 0
@@ -30,14 +34,23 @@ def test_transcribe_help() -> None:
     assert result.exit_code == 0
     assert "--output" in result.output
     assert "--language" in result.output
+    assert "--ocr" in result.output
+    assert "--no-ocr" in result.output
+    assert "--ocr-language" in result.output
 
 
 def _patched_pipeline(tmp_path: Path):
-    """Return patch context managers that mock every external boundary."""
+    """Return patch context managers that mock every external boundary.
+
+    Includes ``RapidOCREngine`` because ``config.ocr_enabled`` defaults to
+    ``True`` — any test that does not explicitly disable OCR would otherwise
+    hit a real ``RapidOCR(params=...)`` init.
+    """
     download_patch = patch("omniscribe.cli.download_video", return_value=tmp_path / "video.mp4")
     extract_patch = patch("omniscribe.cli.extract_audio", return_value=tmp_path / "audio.wav")
     whisper_patch = patch("omniscribe.cli.WhisperTranscriber")
-    return download_patch, extract_patch, whisper_patch
+    ocr_patch = patch("omniscribe.cli.RapidOCREngine")
+    return download_patch, extract_patch, whisper_patch, ocr_patch
 
 
 def test_transcribe_writes_json_with_segments(tmp_path: Path, monkeypatch) -> None:
@@ -49,8 +62,9 @@ def test_transcribe_writes_json_with_segments(tmp_path: Path, monkeypatch) -> No
         TranscriptSegment(start=0.0, end=1.0, text="hello", language="en"),
     ]
 
-    dl, ex, wh = _patched_pipeline(tmp_path)
-    with dl, ex, wh as mock_whisper_cls:
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_ocr_cls.return_value.extract.return_value = []
         mock_whisper_cls.return_value.transcribe.return_value = (segments, "en")
         result = CliRunner().invoke(app, ["transcribe", "fake.mp4", "--output", str(output)])
 
@@ -68,8 +82,9 @@ def test_transcribe_silent_video_produces_zero_segment_transcript(
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
     output = tmp_path / "silent.json"
 
-    dl, ex, wh = _patched_pipeline(tmp_path)
-    with dl, ex, wh as mock_whisper_cls:
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_ocr_cls.return_value.extract.return_value = []
         mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
         result = CliRunner().invoke(app, ["transcribe", "fake.mp4", "--output", str(output)])
 
@@ -85,8 +100,9 @@ def test_transcribe_cleans_temp_dir_by_default(tmp_path: Path, monkeypatch) -> N
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "false")
     output = tmp_path / "out.json"
 
-    dl, ex, wh = _patched_pipeline(tmp_path)
-    with dl, ex, wh as mock_whisper_cls:
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_ocr_cls.return_value.extract.return_value = []
         mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
         # Seed the temp dir so the cleanup branch has something to remove.
         temp_dir.mkdir(parents=True, exist_ok=True)
@@ -104,8 +120,9 @@ def test_transcribe_keeps_temp_dir_when_configured(tmp_path: Path, monkeypatch) 
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
-    dl, ex, wh = _patched_pipeline(tmp_path)
-    with dl, ex, wh as mock_whisper_cls:
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_ocr_cls.return_value.extract.return_value = []
         mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
         temp_dir.mkdir(parents=True, exist_ok=True)
         (temp_dir / "leftover.bin").write_bytes(b"x")
@@ -142,8 +159,9 @@ def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkey
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
     output = tmp_path / "out.json"
 
-    dl, ex, wh = _patched_pipeline(tmp_path)
-    with dl, ex, wh as mock_whisper_cls:
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_ocr_cls.return_value.extract.return_value = []
         mock_whisper_cls.return_value.transcribe.return_value = ([], "fr")
         result = CliRunner().invoke(
             app,
@@ -153,3 +171,123 @@ def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkey
     assert result.exit_code == 0, result.output
     (config_arg,), _ = mock_whisper_cls.call_args
     assert config_arg.whisper_language == "fr"
+
+
+def test_transcribe_ocr_flag_interleaves_segments(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    output = tmp_path / "out.json"
+
+    speech = [TranscriptSegment(start=0.0, end=1.0, text="hello", language="en")]
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = (speech, "en")
+        mock_ocr_cls.return_value.extract.return_value = [
+            _ocr_seg(0.5, "overlay-a"),
+            _ocr_seg(2.0, "overlay-b"),
+        ]
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe",
+                "fake.mp4",
+                "--output",
+                str(output),
+                "--language",
+                "en",
+                "--ocr",
+                "--ocr-language",
+                "ch",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+
+    # Whisper received the --language override.
+    (wh_cfg,), _ = mock_whisper_cls.call_args
+    assert wh_cfg.whisper_language == "en"
+
+    # RapidOCREngine received the --ocr-language override.
+    (ocr_cfg,), _ = mock_ocr_cls.call_args
+    assert ocr_cfg.ocr_language == "ch"
+
+    # Output is interleaved by start.
+    restored = Transcript.model_validate_json(output.read_text(encoding="utf-8"))
+    assert [s.source for s in restored.segments] == [
+        "SPEECH",
+        "ON-SCREEN",
+        "ON-SCREEN",
+    ]
+    assert [s.start for s in restored.segments] == [0.0, 0.5, 2.0]
+
+
+def test_transcribe_no_ocr_flag_skips_engine(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_OCR_ENABLED", "true")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output), "--no-ocr"],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_ocr_cls.assert_not_called()
+
+
+def test_transcribe_env_ocr_disabled_without_flag_skips_engine(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_OCR_ENABLED", "false")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        result = CliRunner().invoke(app, ["transcribe", "fake.mp4", "--output", str(output)])
+
+    assert result.exit_code == 0, result.output
+    mock_ocr_cls.assert_not_called()
+
+
+def test_transcribe_cli_ocr_flag_overrides_env_disabled(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_OCR_ENABLED", "false")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        mock_ocr_cls.return_value.extract.return_value = []
+        result = CliRunner().invoke(
+            app, ["transcribe", "fake.mp4", "--output", str(output), "--ocr"]
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_ocr_cls.assert_called_once()
+
+
+def test_transcribe_zero_speech_zero_ocr_produces_empty_transcript(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        mock_ocr_cls.return_value.extract.return_value = []
+        result = CliRunner().invoke(
+            app, ["transcribe", "fake.mp4", "--output", str(output), "--ocr"]
+        )
+
+    assert result.exit_code == 0, result.output
+    restored = Transcript.model_validate_json(output.read_text(encoding="utf-8"))
+    assert restored.segments == []
+    assert restored.language == "en"
