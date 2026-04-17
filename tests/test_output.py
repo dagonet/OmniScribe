@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omniscribe.output import Transcript, TranscriptSegment, write_json
+from omniscribe.output import Transcript, TranscriptSegment, merge_channels, write_json
 
 
 def test_transcript_segment_defaults() -> None:
@@ -55,6 +55,41 @@ def test_write_json_creates_parent_dirs(tmp_path: Path) -> None:
     write_json(transcript, out)
 
     assert out.is_file()
+
+
+def test_merge_channels_empty_speech_returns_ocr() -> None:
+    ocr = [
+        TranscriptSegment(start=0.0, end=0.0, text="title", source="ON-SCREEN"),
+        TranscriptSegment(start=2.0, end=2.0, text="credits", source="ON-SCREEN"),
+    ]
+
+    merged = merge_channels([], ocr)
+
+    assert merged == ocr
+
+
+def test_merge_channels_speech_wins_equal_start_ties() -> None:
+    speech = [TranscriptSegment(start=1.0, end=2.0, text="spoken", source="SPEECH")]
+    ocr = [TranscriptSegment(start=1.0, end=1.0, text="overlay", source="ON-SCREEN")]
+
+    merged = merge_channels(speech, ocr)
+
+    assert [s.source for s in merged] == ["SPEECH", "ON-SCREEN"]
+
+
+def test_merge_channels_interleaves_by_start() -> None:
+    speech = [
+        TranscriptSegment(start=0.0, end=1.0, text="a", source="SPEECH"),
+        TranscriptSegment(start=3.0, end=4.0, text="c", source="SPEECH"),
+    ]
+    ocr = [
+        TranscriptSegment(start=1.5, end=1.5, text="b", source="ON-SCREEN"),
+        TranscriptSegment(start=5.0, end=5.0, text="d", source="ON-SCREEN"),
+    ]
+
+    merged = merge_channels(speech, ocr)
+
+    assert [s.text for s in merged] == ["a", "b", "c", "d"]
 
 
 def test_write_json_is_pretty_printed(tmp_path: Path) -> None:

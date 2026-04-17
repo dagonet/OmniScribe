@@ -32,3 +32,16 @@ def write_json(transcript: Transcript, path: Path) -> None:
     """Write ``transcript`` as pretty JSON to ``path`` (UTF-8)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
+
+
+def merge_channels(
+    speech: list[TranscriptSegment],
+    ocr: list[TranscriptSegment],
+) -> list[TranscriptSegment]:
+    """Return ``speech + ocr`` sorted by ``start``, SPEECH first on ties.
+
+    Python's ``list.sort`` is stable, so appending ``ocr`` after ``speech`` before
+    sorting keeps every equal-``start`` SPEECH segment ahead of any OCR segment
+    that fires at the same timestamp. No explicit source-enum tiebreaker needed.
+    """
+    return sorted(speech + ocr, key=lambda s: s.start)
