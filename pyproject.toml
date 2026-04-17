@@ -47,7 +47,7 @@ dependencies = [
 
 [project.optional-dependencies]
 gpu = [
-    "paddlepaddle-gpu>=3.0",
+    "paddlepaddle-gpu>=2.6",
 ]
 llm = [
     "ollama>=0.4",
@@ -96,6 +96,13 @@ select = [
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "TC001",  # annotation-only imports in tests are fine; pytest runtime needs follow
+    "TC002",
+    "TC003",
 ]
 
 [tool.ruff.lint.isort]

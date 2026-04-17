@@ -34,6 +34,7 @@ Thumbs.db
 *.wav
 *.avi
 *.mov
+*.ctranslate2
 
 # Test artifacts
 .coverage
@@ -41,3 +42,7 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# Claude Code - machine-specific files
+CLAUDE.local.md
+.claude/.mcp.json

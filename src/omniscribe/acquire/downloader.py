@@ -1,0 +1,44 @@
+"""Video acquisition — local passthrough or yt-dlp download."""
+
+from __future__ import annotations
+
+import logging
+import re
+from pathlib import Path
+
+import yt_dlp
+
+from omniscribe.errors import OmniScribeError
+
+logger = logging.getLogger(__name__)
+
+_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
+
+
+def download_video(source: str, temp_dir: Path) -> Path:
+    """Return a local path to the video referenced by ``source``.
+
+    If ``source`` is an existing local file, it is returned unchanged.
+    If it is an http(s) URL, yt-dlp downloads it into ``temp_dir`` and the
+    resulting path is returned. Any yt-dlp failure is re-raised as an
+    :class:`OmniScribeError` with a single-line message (no traceback chain).
+    """
+    if Path(source).is_file():
+        logger.debug("Using local file passthrough: %s", source)
+        return Path(source)
+
+    if _URL_RE.match(source):
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        ydl_opts = {
+            "outtmpl": str(temp_dir / "%(id)s.%(ext)s"),
+            "quiet": True,
+            "no_warnings": True,
+        }
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(source, download=True)
+                return Path(ydl.prepare_filename(info))
+        except yt_dlp.utils.DownloadError as e:
+            raise OmniScribeError(f"Download failed: {e}") from None
+
+    raise ValueError(f"Invalid source: {source!r} is neither a file nor an http(s) URL")
