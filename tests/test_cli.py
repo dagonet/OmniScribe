@@ -176,6 +176,9 @@ def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkey
 def test_transcribe_ocr_flag_interleaves_segments(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    # Sprint 2.2 dedup defaults drop zero-duration segments; disable the floor
+    # here so this test can continue to assert interleaving behaviour.
+    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
     output = tmp_path / "out.json"
 
     speech = [TranscriptSegment(start=0.0, end=1.0, text="hello", language="en")]
@@ -183,8 +186,8 @@ def test_transcribe_ocr_flag_interleaves_segments(tmp_path: Path, monkeypatch) -
     with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
         mock_whisper_cls.return_value.transcribe.return_value = (speech, "en")
         mock_ocr_cls.return_value.extract.return_value = [
-            _ocr_seg(0.5, "overlay-a"),
-            _ocr_seg(2.0, "overlay-b"),
+            _ocr_seg(0.5, "first overlay text"),
+            _ocr_seg(2.0, "completely different caption"),
         ]
         result = CliRunner().invoke(
             app,
@@ -273,6 +276,42 @@ def test_transcribe_cli_ocr_flag_overrides_env_disabled(tmp_path: Path, monkeypa
 
     assert result.exit_code == 0, result.output
     mock_ocr_cls.assert_called_once()
+
+
+def test_transcribe_ocr_dedup_collapses_duplicate_overlays(tmp_path: Path, monkeypatch) -> None:
+    """Three identical ON-SCREEN segments + 1 SPEECH → 1 collapsed + 1 SPEECH."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    output = tmp_path / "out.json"
+
+    speech = [TranscriptSegment(start=0.0, end=1.0, text="hello", language="en")]
+    ocr_segments = [
+        _ocr_seg(0.5, "Breaking News"),
+        _ocr_seg(1.5, "Breaking News"),
+        _ocr_seg(2.5, "Breaking News"),
+    ]
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = (speech, "en")
+        mock_ocr_cls.return_value.extract.return_value = ocr_segments
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output), "--ocr"],
+        )
+
+    assert result.exit_code == 0, result.output
+    restored = Transcript.model_validate_json(output.read_text(encoding="utf-8"))
+
+    # One collapsed ON-SCREEN + one SPEECH.
+    assert len(restored.segments) == 2
+    assert [s.source for s in restored.segments] == ["SPEECH", "ON-SCREEN"]
+    assert [s.start for s in restored.segments] == [0.0, 0.5]
+
+    collapsed = restored.segments[1]
+    assert collapsed.text == "Breaking News"
+    assert collapsed.start == 0.5
+    assert collapsed.end == 2.5
 
 
 def test_transcribe_zero_speech_zero_ocr_produces_empty_transcript(

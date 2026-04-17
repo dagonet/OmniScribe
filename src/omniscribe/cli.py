@@ -16,6 +16,7 @@ from omniscribe.asr.whisper import WhisperTranscriber
 from omniscribe.audio import extract_audio
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
+from omniscribe.ocr.deduplicator import dedup_segments
 from omniscribe.ocr.rapid_ocr import RapidOCREngine
 from omniscribe.output import Transcript, merge_channels, write_json
 
@@ -111,7 +112,13 @@ def transcribe(
                 len(ocr_segments),
                 ocr_engine.last_frame_count,
             )
-            segments = merge_channels(speech_segments, ocr_segments)
+            deduped_ocr_segments = dedup_segments(
+                ocr_segments,
+                threshold=config.dedup_similarity_threshold,
+                min_duration=config.dedup_min_duration,
+                gap_tolerance=2.0 / config.ocr_sample_fps,
+            )
+            segments = merge_channels(speech_segments, deduped_ocr_segments)
         else:
             segments = speech_segments
 
