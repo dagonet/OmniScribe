@@ -148,7 +148,7 @@ def merge_channels(
     for sp in speech:
         best_idx: int | None = None
         best_score: float = -1.0
-        best_start: float = 0.0
+        best_start: float | None = None
         for idx, oc in enumerate(ocr):
             if idx in consumed_ocr_idx:
                 continue
@@ -157,8 +157,13 @@ def merge_channels(
             score = fuzz.WRatio(sp.text, oc.text)
             if score < score_cutoff:
                 continue
-            # Highest score wins; ties → earliest ocr.start.
-            if score > best_score or (score == best_score and oc.start < best_start):
+            # Highest score wins; ties → earliest ocr.start. ``best_start`` is
+            # None until the first candidate wins, so the first iteration never
+            # hits the tie branch — avoids a sentinel-vs-real-0.0 collision.
+            better = score > best_score or (
+                score == best_score and best_start is not None and oc.start < best_start
+            )
+            if better:
                 best_idx = idx
                 best_score = score
                 best_start = oc.start

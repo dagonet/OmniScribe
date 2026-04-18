@@ -248,6 +248,53 @@ def test_merge_channels_collapsed_segment_spans_union_of_times() -> None:
     assert both.end == 6.0
 
 
+def test_merge_channels_tie_break_at_zero_start() -> None:
+    """Two OCR segments both match at identical WRatio and both start at 0.0.
+
+    Regression guard for the tie-break sentinel bug: with
+    ``best_start = 0.0`` as the initial sentinel, a second same-score
+    candidate at ``oc.start == 0.0`` would fail the ``oc.start < best_start``
+    predicate and the first-seen would win by iteration order rather than
+    by the documented "earliest start wins" rule. With ``best_start = None``
+    the first candidate sets the real start, and subsequent same-score
+    candidates compare against a real prior winner.
+    """
+    speech = [_speech(0.0, 5.0, "hello world")]
+    ocr = [
+        _ocr(0.0, 3.0, "hello world"),
+        _ocr(0.0, 3.0, "hello world"),
+    ]
+
+    merged = merge_channels(speech, ocr, threshold=_T)
+
+    both = [s for s in merged if s.source == "BOTH"]
+    on_screen = [s for s in merged if s.source == "ON-SCREEN"]
+    assert len(both) == 1
+    assert len(on_screen) == 1
+
+
+def test_merge_channels_tie_break_earliest_start_wins() -> None:
+    """When two OCR segments tie on WRatio with different starts, earliest wins.
+
+    The earlier-start OCR is consumed into BOTH; the later-start survives
+    as ON-SCREEN — proves the tie-break predicate fires correctly once a
+    real prior winner is in play.
+    """
+    speech = [_speech(5.0, 10.0, "hello")]
+    ocr = [
+        _ocr(8.0, 9.0, "hello"),  # later
+        _ocr(5.5, 6.5, "hello"),  # earlier
+    ]
+
+    merged = merge_channels(speech, ocr, threshold=_T)
+
+    both = [s for s in merged if s.source == "BOTH"]
+    on_screen = [s for s in merged if s.source == "ON-SCREEN"]
+    assert len(both) == 1
+    # The earlier-start OCR (5.5) was consumed; the later-start (8.0) survives.
+    assert on_screen[0].start == 8.0
+
+
 def test_merge_channels_each_ocr_consumed_at_most_once() -> None:
     # Two speech segments both overlap and match one OCR segment — only the
     # first speech consumes it; the second must emit as bare SPEECH.
