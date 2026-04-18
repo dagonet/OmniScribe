@@ -12,6 +12,7 @@ class Platform(StrEnum):
     YOUTUBE = "youtube"
     INSTAGRAM = "instagram"
     UNKNOWN = "unknown"
+    GENERIC = "generic"
 
 
 def detect_platform(source: str) -> Platform:
