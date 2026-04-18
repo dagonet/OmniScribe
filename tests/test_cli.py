@@ -687,3 +687,106 @@ def test_ui_filter_env_disabled_without_flag_keeps_handle(tmp_path: Path, monkey
     texts = [s.text for s in restored.segments]
     assert "hello world" in texts
     assert "@creator" in texts
+
+
+# --- _resolve_output_format unit tests -------------------------------------
+
+
+class TestResolveOutputFormat:
+    """Unit-level coverage for the precedence resolver.
+
+    CLI smoke tests already exercise the full flag/env/extension matrix
+    through the patched pipeline, but those obscure which branch fired.
+    These tests pin the precedence contract independently so a refactor
+    can't silently break semantics.
+    """
+
+    def test_flag_overrides_everything(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag="srt",
+                env_value="txt",
+                output_path=Path("out.md"),
+                config_value="txt",
+            )
+            == "srt"
+        )
+
+    def test_env_set_wins_over_extension(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag=None,
+                env_value="srt",
+                output_path=Path("out.md"),
+                config_value="srt",
+            )
+            == "srt"
+        )
+
+    def test_env_explicitly_json_still_wins_over_extension(self) -> None:
+        """OMNI_OUTPUT_FORMAT=json with out.srt should write JSON (env > ext).
+
+        Regression guard for the "env equals hard default" ambiguity:
+        presence is the trigger, not value-differs-from-default.
+        """
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag=None,
+                env_value="json",
+                output_path=Path("out.srt"),
+                config_value="json",
+            )
+            == "json"
+        )
+
+    def test_empty_env_value_ignored(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag=None,
+                env_value="",
+                output_path=Path("out.srt"),
+                config_value="json",
+            )
+            == "srt"
+        )
+
+    def test_extension_inference_when_env_unset(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        for suffix, expected in (
+            (".json", "json"),
+            (".txt", "txt"),
+            (".srt", "srt"),
+            (".md", "md"),
+            (".MD", "md"),
+        ):
+            assert (
+                _resolve_output_format(
+                    flag=None,
+                    env_value=None,
+                    output_path=Path(f"out{suffix}"),
+                    config_value="json",
+                )
+                == expected
+            ), suffix
+
+    def test_unknown_extension_falls_to_default(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag=None,
+                env_value=None,
+                output_path=Path("out.bin"),
+                config_value="json",
+            )
+            == "json"
+        )

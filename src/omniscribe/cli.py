@@ -80,17 +80,21 @@ def _resolve_output_format(
     flag: str | None,
     env_value: str | None,
     output_path: Path,
-    config_default: str,
+    config_value: str,
 ) -> str:
     """Resolve the output format per documented precedence.
 
     Order (highest priority first):
 
     1. CLI ``--format`` flag.
-    2. ``OMNI_OUTPUT_FORMAT`` env var (if set to any non-empty value). Invalid
-       values have already been rejected by
-       :class:`~omniscribe.config.OmniScribeConfig`; if the env var survived
-       that, it matches ``config_default`` and is therefore authoritative.
+    2. ``OMNI_OUTPUT_FORMAT`` env var (if ``env_value`` is non-empty). Presence
+       is determined by the caller — we pass ``os.environ.get(...)`` which
+       yields ``None`` when unset, so this branch is gated on "env var exists"
+       and not on "value differs from default". Concretely,
+       ``OMNI_OUTPUT_FORMAT=json`` explicitly set still wins over an ``.srt``
+       extension. Invalid values have already been rejected by
+       :class:`~omniscribe.config.OmniScribeConfig`, so ``config_value`` (the
+       validated pydantic-resolved value) is authoritative here.
     3. Output-path suffix (``.json`` / ``.txt`` / ``.srt`` / ``.md``).
     4. Hard default ``"json"``.
 
@@ -99,21 +103,23 @@ def _resolve_output_format(
     flag:
         Value from ``--format`` (``None`` when omitted).
     env_value:
-        Raw ``OMNI_OUTPUT_FORMAT`` env-var value; ``None`` when unset.
+        Raw ``OMNI_OUTPUT_FORMAT`` env-var value; ``None`` when unset. Treat
+        presence as the env-branch trigger — a literal ``""`` is ignored.
     output_path:
         The output file the user passed via ``-o``; its suffix drives
         extension inference when neither flag nor env is set.
-    config_default:
-        The validated ``OmniScribeConfig.output_format`` value; used as the
-        env-carried value (pydantic has already validated it by the time we
-        see it here).
+    config_value:
+        The pydantic-resolved ``OmniScribeConfig.output_format`` value. When
+        ``env_value`` is set, this reflects the validated env value; when
+        unset, this reflects the pydantic field default. Only read when
+        ``env_value`` is present.
     """
     if flag is not None:
         return flag
     if env_value is not None and env_value != "":
         # Config validator already rejected invalid values; reflect the
         # validated value (not the raw string) so casing etc. is normalised.
-        return config_default
+        return config_value
     suffix_format = _EXTENSION_TO_FORMAT.get(output_path.suffix.lower())
     if suffix_format is not None:
         return suffix_format
@@ -146,7 +152,7 @@ def transcribe(
         Path("transcript.json"),
         "--output",
         "-o",
-        help="Destination JSON path.",
+        help="Destination path. Extension infers format when --format and OMNI_OUTPUT_FORMAT are both unset.",
     ),
     language: str | None = typer.Option(
         None,
@@ -219,7 +225,7 @@ def transcribe(
         flag=output_format,
         env_value=os.environ.get("OMNI_OUTPUT_FORMAT"),
         output_path=output,
-        config_default=config.output_format,
+        config_value=config.output_format,
     )
 
     ocr_active = ocr if ocr is not None else config.ocr_enabled

@@ -111,6 +111,9 @@ def _format_mmss(seconds: float) -> str:
 
     60 minutes → ``"60:00"`` rather than ``"1:00:00"``: short-form video
     timestamps read more naturally in minute-only form even for longer clips.
+    Sub-second precision is **truncated** (not rounded): ``59.9 → "0:59"``.
+    This matches ``int(seconds)`` floor semantics and keeps a segment's
+    displayed start never ahead of its real start.
     """
     secs = int(seconds)
     minutes, rem = divmod(secs, 60)
@@ -118,7 +121,14 @@ def _format_mmss(seconds: float) -> str:
 
 
 def _escape_markdown(text: str) -> str:
-    """Escape ``|`` and ``` ` ``` so segment text can't corrupt tables/fences."""
+    """Escape ``|`` and ``` ` ``` so segment text can't corrupt tables/fences.
+
+    Escape order: ``\\`` → ``\\\\`` first, then ``|`` → ``\\|`` and
+    ``` ` ``` → ``\\` ``. A caller that pre-escapes (``\\|`` in the source
+    text) will see it doubled on output. OCR and ASR outputs do not contain
+    pre-escaped Markdown in practice; if a downstream consumer needs
+    idempotent escaping, feed raw text in.
+    """
     return text.replace("\\", "\\\\").replace("|", r"\|").replace("`", r"\`")
 
 
