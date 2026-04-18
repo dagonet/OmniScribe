@@ -1,0 +1,118 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "Read",
+      "Edit",
+      "Write",
+      "NotebookEdit",
+      "WebSearch",
+      "WebFetch(*)",
+      "mcp__git-tools__*",
+      "mcp__github-tools__*",
+      "mcp__plugin_github_github__*",
+      "mcp__dotnet-tools__*",
+      "mcp__rust-tools__*",
+      "mcp__ollama-tools__*",
+      "mcp__plugin_context7_context7__*",
+      "mcp__plugin_playwright_playwright__*",
+      "mcp__windows-mcp__*",
+      "mcp__sqlite__*",
+      "mcp__searxng__*",
+      "mcp__open-brain__*",
+      "mcp__godot-tools__*",
+      "mcp__plugin_context-mode_context-mode__*",
+      "mcp__template-sync-tools__*"
+    ],
+    "deny": [
+      "Read(.env*)"
+    ],
+    "defaultMode": "dontAsk"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Bash(git *)",
+            "command": "echo 'BLOCKED: Use MCP git-tools instead of Bash git commands. See CLAUDE.local.md.' >&2; exit 2"
+          },
+          {
+            "type": "command",
+            "if": "Bash(gh *)",
+            "command": "echo 'BLOCKED: Use MCP github-tools instead of Bash gh CLI. See CLAUDE.local.md.' >&2; exit 2"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__git-tools__git_push",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/no-push-main.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/tier-before-coder.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash hooks/require-skills-block.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__git-tools__git_commit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruff format --check . > /tmp/.claude-fmt 2>&1; F=$?; ruff check . > /tmp/.claude-lint 2>&1; L=$?; if [ $F -ne 0 ]; then tail -5 /tmp/.claude-fmt; echo 'BLOCKED: Format violations. Run: ruff format .' >&2; exit 2; fi; if [ $L -ne 0 ]; then tail -5 /tmp/.claude-lint; echo 'BLOCKED: Lint violations. Run: ruff check . --fix' >&2; exit 2; fi",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "ruff check . 2>&1 | tail -10",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "^(coder|python-coder|code-reviewer|tester|architect)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'PIPELINE: Agent finished. Review workstream status and advance if ready.'"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '=== PRE-COMPACTION STATE ===' && (cat docs/plans/*.md 2>/dev/null | head -50 || echo 'No plan files') && echo '---' && (git worktree list 2>/dev/null || true) && echo '---' && (git branch --sort=-committerdate 2>/dev/null | head -10 || true)"
+          }
+        ]
+      }
+    ]
+  },
+  "enableAllProjectMcpServers": true
+}

@@ -46,3 +46,4 @@ htmlcov/
 # Claude Code - machine-specific files
 CLAUDE.local.md
 .claude/.mcp.json
+.claude/settings.local.json
