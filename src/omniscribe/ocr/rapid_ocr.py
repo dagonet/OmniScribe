@@ -104,17 +104,17 @@ class RapidOCREngine:
 
         frame_count = 0
         segments: list[TranscriptSegment] = []
-        mask_ui_zones = (
+        profile = self._profile
+        apply_mask = (
             self._config.ui_filter_enabled
-            and self._profile is not None
-            and bool(self._profile.ui_exclusion_zones)
+            and profile is not None
+            and bool(profile.ui_exclusion_zones)
         )
         for timestamp, frame in sample_frames(video_path, self._config.ocr_sample_fps):
             frame_count += 1
             processed_frame = preprocess(frame)
-            if mask_ui_zones:
-                assert self._profile is not None  # narrow for mypy
-                processed_frame = mask_zones(processed_frame, self._profile.ui_exclusion_zones)
+            if apply_mask and profile is not None:
+                processed_frame = mask_zones(processed_frame, profile.ui_exclusion_zones)
             result = engine(processed_frame)
             texts = getattr(result, "txts", ()) or ()
             scores = getattr(result, "scores", ()) or ()
