@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +15,10 @@ from omniscribe.acquire.platform import Platform
 # ``"unknown"`` enum value because env-var round-trips may surface it from an
 # auto-detect fallback; user-facing CLI choices exclude it (see cli.py).
 _VALID_PLATFORM_PROFILES: frozenset[str] = frozenset({"auto"} | {p.value for p in Platform})
+
+# Whitelist of values accepted by the ``output_format`` field. Mirrors the
+# CLI's ``click.Choice`` set (see cli.py) so env and flag paths stay in sync.
+_VALID_OUTPUT_FORMATS: frozenset[str] = frozenset({"json", "txt", "srt", "md"})
 
 
 class OmniScribeConfig(BaseSettings):
@@ -67,7 +72,10 @@ class OmniScribeConfig(BaseSettings):
     llm_api_key: str | None = None
 
     # ── Output ───────────────────────────────────────────
-    output_format: str = "json"
+    # ``Literal`` already rejects invalid env values automatically; the
+    # explicit validator below is belt-and-suspenders — it produces a more
+    # user-friendly error message listing the allowed values.
+    output_format: Literal["json", "txt", "srt", "md"] = "json"
 
     # ── General ──────────────────────────────────────────
     temp_dir: Path = Field(default_factory=lambda: Path(tempfile.gettempdir()) / "omniscribe")
@@ -99,6 +107,20 @@ class OmniScribeConfig(BaseSettings):
         """
         if not (0.0 < v <= 1.0):
             raise ValueError(f"scene_change_threshold must be in (0.0, 1.0]; got {v!r}")
+        return v
+
+    @field_validator("output_format", mode="before")
+    @classmethod
+    def _validate_output_format(cls, v: object) -> object:
+        """Reject unknown ``output_format`` values with a friendly message.
+
+        Runs ``mode="before"`` so the pydantic ``Literal`` rejection never
+        fires on a string input; users always see the listed allowed values
+        rather than the stock literal-union error.
+        """
+        if isinstance(v, str) and v not in _VALID_OUTPUT_FORMATS:
+            allowed = ", ".join(sorted(_VALID_OUTPUT_FORMATS))
+            raise ValueError(f"output_format must be one of: {allowed}; got {v!r}")
         return v
 
     @field_validator("merge_similarity_threshold", mode="after")

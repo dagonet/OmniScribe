@@ -34,7 +34,7 @@ Dozens of tools transcribe the *spoken audio* of videos (ElevenLabs, Descript, T
          ▼                       ▼
 ┌──────────────────┐  ┌──────────────────────┐
 │   ASR ENGINE     │  │    OCR ENGINE        │
-│   faster-whisper │  │    PaddleOCR         │
+│   faster-whisper │  │    RapidOCR          │
 │   large-v3-turbo │  │    (GPU-accelerated) │
 │   (GPU, FP16)    │  │                      │
 │                  │  │  Smart frame sampling│
@@ -73,7 +73,7 @@ Dozens of tools transcribe the *spoken audio* of videos (ElevenLabs, Descript, T
 |---|---|---|
 | **Language** | Python 3.11+ | Ecosystem support for ML/AI libs |
 | **ASR** | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (large-v3-turbo) | Up to 4x faster than openai/whisper, CTranslate2 backend, FP16/INT8 on GPU, batched inference |
-| **OCR** | [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) | Best accuracy on scene text / overlays, GPU-accelerated, handles rotated/styled text well, 80+ languages |
+| **OCR** | [RapidOCR](https://github.com/RapidAI/RapidOCR) | PP-OCR models via ONNXRuntime — lighter deps than PaddleOCR (no `paddlepaddle-gpu` wheel needed), same PP-OCRv4/v5 accuracy on scene text, 80+ languages, GPU optional |
 | **Video download** | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | De-facto standard, supports hundreds of platforms, metadata extraction |
 | **Video processing** | ffmpeg + OpenCV | Audio extraction, frame sampling, image preprocessing |
 | **Text dedup/merge** | Custom + optional LLM | Fuzzy matching (rapidfuzz), timestamp alignment, optional local LLM for cleanup |
@@ -85,7 +85,7 @@ Dozens of tools transcribe the *spoken audio* of videos (ElevenLabs, Descript, T
 
 **faster-whisper over openai/whisper:** The CTranslate2 backend gives near-identical accuracy at 4x speed and lower VRAM. On an RTX 4090, `large-v3-turbo` with FP16 will process a typical 60-second video in ~2-3 seconds.
 
-**PaddleOCR over EasyOCR/Tesseract:** Video overlays are "scene text" — styled fonts, colored backgrounds, animations. PaddleOCR's PP-OCRv5 handles this significantly better than Tesseract (designed for clean printed text) and is faster than EasyOCR on GPU. It also handles slanted/rotated text boxes, which is common in short-form video.
+**RapidOCR over PaddleOCR/EasyOCR/Tesseract:** Video overlays are "scene text" — styled fonts, colored backgrounds, animations. RapidOCR ships the same PP-OCRv4/v5 models as PaddleOCR through ONNXRuntime, which avoids pulling the heavy `paddlepaddle-gpu` wheel while keeping the accuracy advantage over Tesseract (designed for clean printed text) and EasyOCR. It also handles slanted/rotated text boxes, which is common in short-form video.
 
 **yt-dlp over platform APIs:** No API keys required, works with public videos across hundreds of platforms, extracts metadata (description, hashtags, author) which enriches the transcript.
 
@@ -102,15 +102,16 @@ omniscribe/
 ├── src/
 │   └── omniscribe/
 │       ├── __init__.py
-│       ├── cli.py              # Typer CLI entry point
+│       ├── cli.py              # Typer CLI entry point (transcribe command + --format dispatch)
 │       ├── config.py           # pydantic-settings config
-│       ├── pipeline.py         # Main orchestration pipeline
+│       ├── audio.py            # ffmpeg audio-extraction wrapper
+│       ├── errors.py           # OmniScribeError (single user-facing error type)
+│       ├── output.py           # Transcript/TranscriptSegment + merge_channels + write_json/txt/srt/markdown
 │       │
 │       ├── acquire/
 │       │   ├── __init__.py
 │       │   ├── downloader.py   # yt-dlp wrapper
-│       │   ├── metadata.py     # Video metadata extraction
-│       │   └── platform.py     # Platform detection & profiles
+│       │   └── platform.py     # Platform enum + URL-based detection
 │       │
 │       ├── asr/
 │       │   ├── __init__.py
@@ -118,29 +119,19 @@ omniscribe/
 │       │
 │       ├── ocr/
 │       │   ├── __init__.py
-│       │   ├── frame_sampler.py    # Smart frame extraction
+│       │   ├── frame_sampler.py    # Scene-change + interval frame extraction
 │       │   ├── preprocessor.py     # Image preprocessing
-│       │   ├── paddle_ocr.py       # PaddleOCR wrapper
+│       │   ├── rapid_ocr.py        # RapidOCR (ONNXRuntime) wrapper
 │       │   ├── deduplicator.py     # Cross-frame text dedup
-│       │   └── ui_filter.py        # Platform UI element filtering
+│       │   └── ui_filter.py        # Platform UI element filtering (patterns + frequency)
 │       │
-│       ├── platforms/
-│       │   ├── __init__.py
-│       │   ├── base.py         # Base platform profile
-│       │   ├── tiktok.py       # TikTok UI regions & patterns
-│       │   ├── youtube.py      # YouTube/Shorts UI regions
-│       │   └── instagram.py    # Instagram Reels UI regions
-│       │
-│       ├── merge/
-│       │   ├── __init__.py
-│       │   ├── aligner.py      # Timestamp-based alignment
-│       │   ├── dedup.py        # ASR↔OCR deduplication
-│       │   └── llm_cleanup.py  # Optional LLM post-processing
-│       │
-│       └── output/
+│       └── platforms/
 │           ├── __init__.py
-│           ├── formatters.py   # txt, json, srt, vtt, md
-│           └── models.py       # Pydantic output models
+│           ├── base.py         # Base platform profile
+│           ├── registry.py     # Profile selection (auto-detect or override)
+│           ├── tiktok.py       # TikTok UI regions & patterns
+│           ├── youtube.py      # YouTube/Shorts UI regions
+│           └── instagram.py    # Instagram Reels UI regions
 │
 ├── tests/
 │   ├── conftest.py
@@ -193,7 +184,7 @@ omniscribe/
 2. `ocr/preprocessor.py` — Frame preprocessing for OCR accuracy
    - Region-of-interest detection (text typically appears in top/center/bottom zones)
    - Contrast enhancement, denoising for styled text on busy backgrounds
-3. `ocr/paddle_ocr.py` — PaddleOCR wrapper
+3. `ocr/rapid_ocr.py` — RapidOCR (ONNXRuntime) wrapper
    - GPU-accelerated inference
    - Configurable language (default: auto-detect)
    - Return: `[{text, confidence, bbox, frame_timestamp}]`
@@ -310,6 +301,17 @@ Merged output:
 
 ---
 
+### Phase status
+
+| Phase | Status | Reference |
+|---|---|---|
+| Phase 1 — Foundation & ASR | Complete | `docs/plans/phase-1-foundation-asr.md`; merged through Sprint 1.2 |
+| Phase 2 — OCR pipeline | Complete | `docs/plans/phase-2-5-scene-change.md` (Sprint 2.5, PR #3 — `894fae2`); Sprints 2.1–2.2 merged earlier |
+| Phase 3 — Platform profiles & UI filtering | Complete | Sprint 3.1 (`3d855cc`), Sprint 3.2 (`05bbe37`) |
+| Phase 4 — Merge engine | In progress | `docs/plans/phase-4-merge-engine.md`; Sprint 4.1 (PR #4, `5c81ced`) merged; Sprint 4.2 (format writers + `--format`) in review |
+| Phase 5 — Polish & extensibility | Not started | — |
+| Phase 6 — Advanced features | Not started | — |
+
 ### Phase 6 (Future): Advanced Features
 
 Ideas for later, not in initial scope:
@@ -381,24 +383,13 @@ omniscribe transcribe ./video.mp4
 # With options
 omniscribe transcribe <url> \
   --output transcript.json \
-  --format json \
-  --language de \
-  --ocr-languages en,de \
-  --platform tiktok          # override auto-detection
-  --no-ocr                   # speech-only mode
-  --no-asr                   # OCR-only mode
-  --llm-cleanup              # enable LLM post-processing
-
-# Batch mode
-omniscribe batch urls.txt --output-dir ./transcripts/
-
-# Model management
-omniscribe models download    # download whisper + paddleocr models
-omniscribe models list        # show installed models
-
-# Platform profiles
-omniscribe platforms list     # show available platform profiles
-omniscribe platforms show tiktok  # show details of a profile
+  --format json \               # json | txt | srt | md
+  --language de \               # force ASR language (--language en, de, ...)
+  --ocr-language en \           # RapidOCR LangRec value (en, ch, japan, ...)
+  --platform tiktok \           # override platform auto-detect
+  --ocr / --no-ocr \            # toggle OCR channel
+  --ui-filter / --no-ui-filter \  # toggle zone/pattern/frequency chrome filters
+  --scene-change / --no-scene-change   # toggle OCR frame-sampler scene-change mode
 ```
 
 ## Key Technical Decisions
@@ -449,15 +440,13 @@ requires-python = ">=3.11"
 license = "MIT"
 dependencies = [
     "faster-whisper>=1.1.0",
-    "paddleocr>=2.9",
-    "paddlepaddle-gpu>=3.0",      # or paddlepaddle for CPU
+    "rapidocr>=2.0",               # ONNXRuntime-backed PP-OCR (replaces paddleocr)
     "yt-dlp>=2024.0",
     "opencv-python-headless>=4.9",
     "typer[all]>=0.12",
     "pydantic-settings>=2.0",
     "rapidfuzz>=3.0",
     "rich>=13.0",                  # pretty terminal output
-    "pydub>=0.25",                 # audio processing
 ]
 
 [project.optional-dependencies]
@@ -481,7 +470,7 @@ omniscribe = "omniscribe.cli:app"
 | RTX 3070/3080 | 8-10 GB | ~12-20 seconds total |
 | CPU only | — | ~60-120 seconds total |
 
-The RTX 4090 can comfortably run faster-whisper (large-v3-turbo, ~1.5 GB VRAM) and PaddleOCR (~0.5 GB VRAM) simultaneously, leaving plenty of headroom.
+The RTX 4090 can comfortably run faster-whisper (large-v3-turbo, ~1.5 GB VRAM) and RapidOCR (~0.5 GB VRAM via ONNXRuntime) simultaneously, leaving plenty of headroom.
 
 ## License
 

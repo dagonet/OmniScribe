@@ -39,6 +39,7 @@ def test_transcribe_help() -> None:
     assert "--no-ocr" in result.output
     assert "--ocr-language" in result.output
     assert "--platform" in result.output
+    assert "--format" in result.output
 
 
 def _patched_pipeline(tmp_path: Path):
@@ -538,6 +539,117 @@ def test_scene_change_env_disabled_without_flag(tmp_path: Path, monkeypatch) -> 
     assert ocr_cfg.scene_change_enabled is False
 
 
+# ── Sprint 4.2: --format flag + precedence ────────────────────────────────
+
+
+def _invoke_with_format(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    output_path: Path,
+    extra_args: list[str],
+) -> str:
+    """Run the CLI with a single speech segment and return the resulting output text.
+
+    Returns the UTF-8 text of ``output_path`` after the run.
+    """
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+
+    speech = [TranscriptSegment(start=0.0, end=1.0, text="hello", language="en")]
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_ocr_cls.return_value.extract.return_value = []
+        mock_whisper_cls.return_value.transcribe.return_value = (speech, "en")
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output_path), *extra_args],
+        )
+    assert result.exit_code == 0, result.output
+    return output_path.read_text(encoding="utf-8")
+
+
+def test_format_json_writes_json(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "out.json"
+    text = _invoke_with_format(
+        tmp_path, monkeypatch, output_path=out, extra_args=["--format", "json"]
+    )
+    # JSON round-trip confirms shape.
+    restored = Transcript.model_validate_json(text)
+    assert len(restored.segments) == 1
+
+
+def test_format_txt_writes_txt(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "out.any"
+    text = _invoke_with_format(
+        tmp_path, monkeypatch, output_path=out, extra_args=["--format", "txt"]
+    )
+    # First line is just the segment text — no annotations, no JSON brace.
+    assert text.splitlines()[0] == "hello"
+
+
+def test_format_srt_writes_srt(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "out.any"
+    text = _invoke_with_format(
+        tmp_path, monkeypatch, output_path=out, extra_args=["--format", "srt"]
+    )
+    # SRT cue index first line.
+    assert text.startswith("1\n")
+    assert "00:00:00,000 --> 00:00:01,000" in text
+
+
+def test_format_md_writes_markdown(tmp_path: Path, monkeypatch) -> None:
+    out = tmp_path / "out.any"
+    text = _invoke_with_format(
+        tmp_path, monkeypatch, output_path=out, extra_args=["--format", "md"]
+    )
+    # Markdown writer emits the [SPEECH] source annotation.
+    assert "[SPEECH]" in text
+
+
+def test_format_flag_beats_extension(tmp_path: Path, monkeypatch) -> None:
+    """--format srt with -o out.txt: CLI flag wins over extension."""
+    out = tmp_path / "out.txt"
+    text = _invoke_with_format(
+        tmp_path, monkeypatch, output_path=out, extra_args=["--format", "srt"]
+    )
+    assert text.startswith("1\n")
+
+
+def test_env_format_beats_extension(tmp_path: Path, monkeypatch) -> None:
+    """OMNI_OUTPUT_FORMAT=srt + -o out.txt (no --format): env wins over extension."""
+    monkeypatch.setenv("OMNI_OUTPUT_FORMAT", "srt")
+    out = tmp_path / "out.txt"
+    text = _invoke_with_format(tmp_path, monkeypatch, output_path=out, extra_args=[])
+    assert text.startswith("1\n")
+
+
+def test_extension_beats_default(tmp_path: Path, monkeypatch) -> None:
+    """No --format, no env, -o out.srt: extension inference routes to SRT."""
+    out = tmp_path / "out.srt"
+    text = _invoke_with_format(tmp_path, monkeypatch, output_path=out, extra_args=[])
+    assert text.startswith("1\n")
+
+
+def test_default_when_extension_unknown(tmp_path: Path, monkeypatch) -> None:
+    """No --format, no env, -o out.bin: falls through to default 'json'."""
+    out = tmp_path / "out.bin"
+    text = _invoke_with_format(tmp_path, monkeypatch, output_path=out, extra_args=[])
+    restored = Transcript.model_validate_json(text)
+    assert len(restored.segments) == 1
+
+
+def test_invalid_format_flag_exits_nonzero(tmp_path: Path) -> None:
+    """--format bogus should fail via click.Choice with a helpful error."""
+    output = tmp_path / "out.any"
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", "fake.mp4", "--output", str(output), "--format", "bogus"],
+    )
+    assert result.exit_code != 0
+    assert "Invalid value for '--format'" in result.output
+
+
 def test_ui_filter_env_disabled_without_flag_keeps_handle(tmp_path: Path, monkeypatch) -> None:
     """OMNI_UI_FILTER_ENABLED=false + no CLI flag must let sidebar chrome through."""
     monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
@@ -575,3 +687,106 @@ def test_ui_filter_env_disabled_without_flag_keeps_handle(tmp_path: Path, monkey
     texts = [s.text for s in restored.segments]
     assert "hello world" in texts
     assert "@creator" in texts
+
+
+# --- _resolve_output_format unit tests -------------------------------------
+
+
+class TestResolveOutputFormat:
+    """Unit-level coverage for the precedence resolver.
+
+    CLI smoke tests already exercise the full flag/env/extension matrix
+    through the patched pipeline, but those obscure which branch fired.
+    These tests pin the precedence contract independently so a refactor
+    can't silently break semantics.
+    """
+
+    def test_flag_overrides_everything(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag="srt",
+                env_value="txt",
+                output_path=Path("out.md"),
+                config_value="txt",
+            )
+            == "srt"
+        )
+
+    def test_env_set_wins_over_extension(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag=None,
+                env_value="srt",
+                output_path=Path("out.md"),
+                config_value="srt",
+            )
+            == "srt"
+        )
+
+    def test_env_explicitly_json_still_wins_over_extension(self) -> None:
+        """OMNI_OUTPUT_FORMAT=json with out.srt should write JSON (env > ext).
+
+        Regression guard for the "env equals hard default" ambiguity:
+        presence is the trigger, not value-differs-from-default.
+        """
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag=None,
+                env_value="json",
+                output_path=Path("out.srt"),
+                config_value="json",
+            )
+            == "json"
+        )
+
+    def test_empty_env_value_ignored(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag=None,
+                env_value="",
+                output_path=Path("out.srt"),
+                config_value="json",
+            )
+            == "srt"
+        )
+
+    def test_extension_inference_when_env_unset(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        for suffix, expected in (
+            (".json", "json"),
+            (".txt", "txt"),
+            (".srt", "srt"),
+            (".md", "md"),
+            (".MD", "md"),
+        ):
+            assert (
+                _resolve_output_format(
+                    flag=None,
+                    env_value=None,
+                    output_path=Path(f"out{suffix}"),
+                    config_value="json",
+                )
+                == expected
+            ), suffix
+
+    def test_unknown_extension_falls_to_default(self) -> None:
+        from omniscribe.cli import _resolve_output_format
+
+        assert (
+            _resolve_output_format(
+                flag=None,
+                env_value=None,
+                output_path=Path("out.bin"),
+                config_value="json",
+            )
+            == "json"
+        )

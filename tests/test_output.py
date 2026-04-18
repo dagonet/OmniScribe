@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from omniscribe.output import Transcript, TranscriptSegment, merge_channels, write_json
+from omniscribe.output import (
+    Transcript,
+    TranscriptSegment,
+    merge_channels,
+    write_json,
+    write_markdown,
+    write_srt,
+    write_txt,
+)
 
 # Default threshold mirrors ``OmniScribeConfig.merge_similarity_threshold`` so
 # the test cases track the intended production cutoff.
@@ -338,3 +346,263 @@ def test_write_json_is_pretty_printed(tmp_path: Path) -> None:
 
     text = out.read_text(encoding="utf-8")
     assert "\n  " in text  # 2-space indent marker
+
+
+# ── write_txt ──────────────────────────────────────────────────────────────
+
+
+def test_write_txt_plain_lines_no_annotations(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[
+            _speech(0.0, 1.0, "hello world"),
+            _ocr(1.0, 2.0, "on-screen caption"),
+        ],
+        language="en",
+    )
+    out = tmp_path / "plain.txt"
+
+    write_txt(transcript, out)
+
+    lines = out.read_text(encoding="utf-8").splitlines()
+    assert lines == ["hello world", "on-screen caption"]
+
+
+def test_write_txt_one_line_per_segment(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[
+            _speech(0.0, 1.0, "a"),
+            _speech(1.0, 2.0, "b"),
+            _speech(2.0, 3.0, "c"),
+        ],
+        language="en",
+    )
+    out = tmp_path / "count.txt"
+
+    write_txt(transcript, out)
+
+    lines = out.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 3
+
+
+def test_write_txt_strips_embedded_newlines(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[_speech(0.0, 1.0, "line1\nline2"), _speech(1.0, 2.0, "next")],
+        language="en",
+    )
+    out = tmp_path / "stripped.txt"
+
+    write_txt(transcript, out)
+
+    # Embedded newline must be collapsed — no blank line mid-segment.
+    lines = out.read_text(encoding="utf-8").splitlines()
+    assert lines == ["line1 line2", "next"]
+
+
+def test_write_txt_is_utf8(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[_speech(0.0, 1.0, "café")],
+        language="fr",
+    )
+    out = tmp_path / "utf8.txt"
+
+    write_txt(transcript, out)
+
+    raw = out.read_bytes()
+    # 'é' encodes to 0xC3 0xA9 in UTF-8.
+    assert b"\xc3\xa9" in raw
+
+
+# ── write_srt ──────────────────────────────────────────────────────────────
+
+
+def test_write_srt_one_based_cue_index(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[
+            _speech(0.0, 1.0, "first"),
+            _speech(1.0, 2.0, "second"),
+        ],
+        language="en",
+    )
+    out = tmp_path / "cues.srt"
+
+    write_srt(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith("1\n")
+    assert "\n2\n" in text
+
+
+def test_write_srt_timestamp_format_fractional(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[_speech(0.5, 1.25, "hi")],
+        language="en",
+    )
+    out = tmp_path / "ts.srt"
+
+    write_srt(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    assert "00:00:00,500 --> 00:00:01,250" in text
+
+
+def test_write_srt_timestamp_format_hours(tmp_path: Path) -> None:
+    # 3661.25s == 01:01:01.250
+    transcript = Transcript(
+        segments=[_speech(3661.25, 3661.5, "late")],
+        language="en",
+    )
+    out = tmp_path / "hours.srt"
+
+    write_srt(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    assert "01:01:01,250 --> 01:01:01,500" in text
+
+
+def test_write_srt_blank_line_separator(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[
+            _speech(0.0, 1.0, "first"),
+            _speech(1.0, 2.0, "second"),
+        ],
+        language="en",
+    )
+    out = tmp_path / "sep.srt"
+
+    write_srt(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    # Blank line between cues: the boundary before cue 2 has a double-newline.
+    assert "\n\n2\n" in text
+
+
+def test_write_srt_is_utf8(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[_speech(0.0, 1.0, "café")],
+        language="fr",
+    )
+    out = tmp_path / "utf8.srt"
+
+    write_srt(transcript, out)
+
+    raw = out.read_bytes()
+    assert b"\xc3\xa9" in raw
+
+
+def test_write_srt_strips_newlines_in_cue_text(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[_speech(0.0, 1.0, "a\nb")],
+        language="en",
+    )
+    out = tmp_path / "multiline.srt"
+
+    write_srt(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    # Embedded \n must be collapsed — cue body appears on a single line "a b".
+    assert "a b" in text
+    # And the raw "a\nb" must not survive inside the cue body.
+    # (Splitting into blocks: each SRT cue is index\nstamp\ntext\n\n; the text
+    # line must not be just "a" followed by another line "b".)
+    lines = text.splitlines()
+    # The line containing cue text should include both tokens together.
+    assert any("a b" in ln for ln in lines)
+
+
+def test_write_srt_angle_brackets_round_trip(tmp_path: Path) -> None:
+    """SRT writer is garbage-in-garbage-out: ``<`` / ``>`` are not escaped."""
+    transcript = Transcript(
+        segments=[_speech(0.0, 1.0, "a <b> c")],
+        language="en",
+    )
+    out = tmp_path / "tags.srt"
+
+    write_srt(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    assert "a <b> c" in text
+
+
+# ── write_markdown ─────────────────────────────────────────────────────────
+
+
+def test_write_markdown_source_annotations_present(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[
+            _speech(0.0, 1.0, "spoken"),
+            _ocr(1.0, 2.0, "on-screen"),
+            TranscriptSegment(start=2.0, end=3.0, text="both", source="BOTH"),
+        ],
+        language="en",
+    )
+    out = tmp_path / "annotations.md"
+
+    write_markdown(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    assert "[SPEECH]" in text
+    assert "[ON-SCREEN]" in text
+    assert "[BOTH]" in text
+
+
+def test_write_markdown_escapes_pipes(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[_speech(0.0, 1.0, "alpha | beta")],
+        language="en",
+    )
+    out = tmp_path / "pipe.md"
+
+    write_markdown(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    assert r"alpha \| beta" in text
+    # The unescaped pipe must not survive.
+    assert "alpha | beta" not in text
+
+
+def test_write_markdown_escapes_backticks(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[_speech(0.0, 1.0, "use `code` here")],
+        language="en",
+    )
+    out = tmp_path / "backtick.md"
+
+    write_markdown(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    assert r"use \`code\` here" in text
+
+
+def test_write_markdown_mmss_timestamp_form(tmp_path: Path) -> None:
+    # 0.0s → "0:00"; 65.0s → "1:05"; 3605.0s → "60:05" (no hour wrap).
+    transcript = Transcript(
+        segments=[
+            _speech(0.0, 1.0, "a"),
+            _speech(65.0, 70.0, "b"),
+        ],
+        language="en",
+    )
+    out = tmp_path / "mmss.md"
+
+    write_markdown(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    # en-dash (U+2013) between start/end timestamps, mm:ss form.
+    assert "0:00" in text
+    assert "1:05" in text
+    assert "\u2013" in text  # en-dash separator
+
+
+def test_write_markdown_strips_newlines(tmp_path: Path) -> None:
+    transcript = Transcript(
+        segments=[_speech(0.0, 1.0, "first\nsecond")],
+        language="en",
+    )
+    out = tmp_path / "nl.md"
+
+    write_markdown(transcript, out)
+
+    text = out.read_text(encoding="utf-8")
+    # The original embedded newline must be collapsed so each segment occupies
+    # exactly one line of the output.
+    assert "first second" in text
