@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -21,8 +22,27 @@ from omniscribe.errors import OmniScribeError
 from omniscribe.ocr.deduplicator import dedup_segments
 from omniscribe.ocr.rapid_ocr import RapidOCREngine
 from omniscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
-from omniscribe.output import Transcript, merge_channels, write_json
+from omniscribe.output import (
+    Transcript,
+    merge_channels,
+    write_json,
+    write_markdown,
+    write_srt,
+    write_txt,
+)
 from omniscribe.platforms.registry import resolve_profile
+
+# Output-format choices mirror ``config._VALID_OUTPUT_FORMATS`` / the
+# ``output.write_*`` writers. Kept as a module-level constant so the flag
+# help and resolution logic can't drift.
+_OUTPUT_FORMAT_CHOICES: list[str] = ["json", "txt", "srt", "md"]
+# Maps lowercased output-path suffixes to the format key used by the writers.
+_EXTENSION_TO_FORMAT: dict[str, str] = {
+    ".json": "json",
+    ".txt": "txt",
+    ".srt": "srt",
+    ".md": "md",
+}
 
 # User-facing ``--platform`` choices: derived from ``Platform`` enum values plus
 # ``"auto"``. Excludes ``"unknown"`` — that's an internal auto-detect sentinel,
@@ -53,6 +73,51 @@ def _setup_logging(level: str) -> None:
         datefmt="[%X]",
         handlers=[RichHandler(console=_console, rich_tracebacks=False, show_path=False)],
     )
+
+
+def _resolve_output_format(
+    *,
+    flag: str | None,
+    env_value: str | None,
+    output_path: Path,
+    config_default: str,
+) -> str:
+    """Resolve the output format per documented precedence.
+
+    Order (highest priority first):
+
+    1. CLI ``--format`` flag.
+    2. ``OMNI_OUTPUT_FORMAT`` env var (if set to any non-empty value). Invalid
+       values have already been rejected by
+       :class:`~omniscribe.config.OmniScribeConfig`; if the env var survived
+       that, it matches ``config_default`` and is therefore authoritative.
+    3. Output-path suffix (``.json`` / ``.txt`` / ``.srt`` / ``.md``).
+    4. Hard default ``"json"``.
+
+    Parameters
+    ----------
+    flag:
+        Value from ``--format`` (``None`` when omitted).
+    env_value:
+        Raw ``OMNI_OUTPUT_FORMAT`` env-var value; ``None`` when unset.
+    output_path:
+        The output file the user passed via ``-o``; its suffix drives
+        extension inference when neither flag nor env is set.
+    config_default:
+        The validated ``OmniScribeConfig.output_format`` value; used as the
+        env-carried value (pydantic has already validated it by the time we
+        see it here).
+    """
+    if flag is not None:
+        return flag
+    if env_value is not None and env_value != "":
+        # Config validator already rejected invalid values; reflect the
+        # validated value (not the raw string) so casing etc. is normalised.
+        return config_default
+    suffix_format = _EXTENSION_TO_FORMAT.get(output_path.suffix.lower())
+    if suffix_format is not None:
+        return suffix_format
+    return "json"
 
 
 @app.callback()
@@ -120,8 +185,24 @@ def transcribe(
             "overrides OMNI_SCENE_CHANGE_ENABLED."
         ),
     ),
+    output_format: str | None = typer.Option(
+        None,
+        "--format",
+        click_type=click.Choice(_OUTPUT_FORMAT_CHOICES),
+        help=(
+            "Output format. Precedence: --format > OMNI_OUTPUT_FORMAT > "
+            "output-path extension (.json/.txt/.srt/.md) > default 'json'. "
+            "Note: since v0.4 the output-path suffix routes the writer — "
+            "-o foo.txt without --format now writes TXT (previously JSON)."
+        ),
+    ),
 ) -> None:
-    """Download (if URL), extract audio, transcribe, and write JSON."""
+    """Download (if URL), extract audio, transcribe, and write the transcript.
+
+    Output format is resolved in this order: ``--format`` flag, then
+    ``OMNI_OUTPUT_FORMAT`` env var, then the output-path extension
+    (``.json`` / ``.txt`` / ``.srt`` / ``.md``), then the default ``"json"``.
+    """
     config: OmniScribeConfig = ctx.obj["config"]
     if language is not None:
         config = config.model_copy(update={"whisper_language": language})
@@ -133,6 +214,13 @@ def transcribe(
         config = config.model_copy(update={"ui_filter_enabled": ui_filter})
     if scene_change is not None:
         config = config.model_copy(update={"scene_change_enabled": scene_change})
+
+    resolved_format = _resolve_output_format(
+        flag=output_format,
+        env_value=os.environ.get("OMNI_OUTPUT_FORMAT"),
+        output_path=output,
+        config_default=config.output_format,
+    )
 
     ocr_active = ocr if ocr is not None else config.ocr_enabled
 
@@ -182,7 +270,17 @@ def transcribe(
             segments = speech_segments
 
         transcript = Transcript(segments=segments, language=detected_language)
-        write_json(transcript, output)
+        match resolved_format:
+            case "json":
+                write_json(transcript, output)
+            case "txt":
+                write_txt(transcript, output)
+            case "srt":
+                write_srt(transcript, output)
+            case "md":
+                write_markdown(transcript, output)
+            case _:  # pragma: no cover — exhaustive by Choice + resolver
+                raise OmniScribeError(f"unknown output format: {resolved_format!r}")
         _console.print(f"[green]Wrote {len(segments)} segment(s) to {output}[/green]")
     except OmniScribeError as e:
         typer.secho(str(e), fg=typer.colors.RED, err=True)

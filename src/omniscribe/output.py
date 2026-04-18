@@ -48,6 +48,105 @@ def write_json(transcript: Transcript, path: Path) -> None:
     path.write_text(transcript.model_dump_json(indent=2), encoding="utf-8")
 
 
+def write_txt(transcript: Transcript, path: Path) -> None:
+    """Write ``transcript`` as plain text: one segment per line, UTF-8.
+
+    No annotations, no timestamps, no source tags — just ``segment.text`` per
+    line. Embedded ``\\n``/``\\r`` inside a segment are collapsed via
+    :func:`_normalize_cue` so each segment occupies exactly one output line.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [_normalize_cue(s.text) for s in transcript.segments]
+    # Trailing newline keeps editors/POSIX tools happy; empty transcript is "".
+    body = "\n".join(lines)
+    if body:
+        body += "\n"
+    path.write_text(body, encoding="utf-8")
+
+
+def _format_srt_timestamp(seconds: float) -> str:
+    """Render ``seconds`` as ``HH:MM:SS,mmm`` (SRT-standard comma separator).
+
+    Handles fractional seconds by truncating the sub-millisecond tail. Hours
+    are not capped at 99: transcripts rarely exceed that, so callers who feed
+    day-long inputs can eyeball the result.
+    """
+    # Work in integer milliseconds to avoid float-repr "59.9999" artefacts.
+    total_ms = round(seconds * 1000)
+    hours, rem_ms = divmod(total_ms, 3_600_000)
+    minutes, rem_ms = divmod(rem_ms, 60_000)
+    secs, millis = divmod(rem_ms, 1_000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
+
+
+def write_srt(transcript: Transcript, path: Path) -> None:
+    """Write ``transcript`` as SubRip (``.srt``) subtitles, UTF-8.
+
+    Cues are 1-indexed. Timestamps use the SRT-standard
+    ``HH:MM:SS,mmm --> HH:MM:SS,mmm`` form (comma separates the millisecond
+    fraction). Cues are separated by a blank line; a trailing blank after the
+    last cue is tolerated by every player surveyed and keeps the implementation
+    branch-free.
+
+    Embedded ``\\n``/``\\r`` in segment text are collapsed via
+    :func:`_normalize_cue` because multi-line cue bodies can corrupt players
+    that interpret the blank line as a cue boundary.
+
+    HTML/angle-bracket escaping posture: **garbage-in-garbage-out.** Different
+    SRT players render ``<`` / ``>`` either as literal characters or as
+    tag markup; there is no portable escape. The caller controls cue content.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cues: list[str] = []
+    for idx, seg in enumerate(transcript.segments, start=1):
+        start = _format_srt_timestamp(seg.start)
+        end = _format_srt_timestamp(seg.end)
+        body = _normalize_cue(seg.text)
+        cues.append(f"{idx}\n{start} --> {end}\n{body}\n")
+    path.write_text("\n".join(cues), encoding="utf-8")
+
+
+def _format_mmss(seconds: float) -> str:
+    """Render ``seconds`` as ``M:SS`` or ``MM:SS`` (no hour wrap).
+
+    60 minutes → ``"60:00"`` rather than ``"1:00:00"``: short-form video
+    timestamps read more naturally in minute-only form even for longer clips.
+    """
+    secs = int(seconds)
+    minutes, rem = divmod(secs, 60)
+    return f"{minutes}:{rem:02d}"
+
+
+def _escape_markdown(text: str) -> str:
+    """Escape ``|`` and ``` ` ``` so segment text can't corrupt tables/fences."""
+    return text.replace("\\", "\\\\").replace("|", r"\|").replace("`", r"\`")
+
+
+def write_markdown(transcript: Transcript, path: Path) -> None:
+    """Write ``transcript`` as compact Markdown, UTF-8 — one line per segment.
+
+    Format: ``**[{SOURCE}] {m:ss}-{m:ss}** {text}`` where the separator is a
+    Unicode en-dash (U+2013), not an ASCII hyphen — chosen for typographic
+    clarity between timestamps.
+
+    No frontmatter, no title, no legend — downstream consumers can prepend
+    their own. Pipe (``|``) and backtick (``` ` ```) are escaped in segment
+    text to prevent table/code-fence corruption. Embedded newlines are
+    collapsed via :func:`_normalize_cue`.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    for seg in transcript.segments:
+        body = _escape_markdown(_normalize_cue(seg.text))
+        start = _format_mmss(seg.start)
+        end = _format_mmss(seg.end)
+        lines.append(f"**[{seg.source}] {start}\u2013{end}** {body}")
+    body = "\n".join(lines)
+    if body:
+        body += "\n"
+    path.write_text(body, encoding="utf-8")
+
+
 def _overlaps(speech: TranscriptSegment, ocr: TranscriptSegment) -> bool:
     """Strict temporal overlap: touching boundaries do NOT overlap.
 

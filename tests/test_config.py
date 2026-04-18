@@ -140,3 +140,36 @@ def test_merge_similarity_threshold_boundaries_accepted(
     cfg = OmniScribeConfig(merge_similarity_threshold=ok)
 
     assert cfg.merge_similarity_threshold == ok
+
+
+# ── output_format ──────────────────────────────────────────────────────────
+
+
+def test_output_format_default_is_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sprint 4.2 — default output_format is 'json'."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.output_format == "json"
+
+
+@pytest.mark.parametrize("ok", ["json", "txt", "srt", "md"])
+def test_output_format_allowed_values(monkeypatch: pytest.MonkeyPatch, ok: str) -> None:
+    """All four allowed values are accepted at construction time."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig(output_format=ok)  # type: ignore[arg-type]
+
+    assert cfg.output_format == ok
+
+
+@pytest.mark.parametrize("bad", ["pdf", "vtt", "JSON", ""])
+def test_output_format_invalid_rejects(monkeypatch: pytest.MonkeyPatch, bad: str) -> None:
+    """Unknown output formats raise ValidationError with a helpful message."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        OmniScribeConfig(output_format=bad)  # type: ignore[arg-type]
