@@ -10,6 +10,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from omniscribe.acquire.platform import Platform
 
+# Whitelist of values accepted by the ``platform_profile`` field. Includes the
+# ``"unknown"`` enum value because env-var round-trips may surface it from an
+# auto-detect fallback; user-facing CLI choices exclude it (see cli.py).
 _VALID_PLATFORM_PROFILES: frozenset[str] = frozenset({"auto"} | {p.value for p in Platform})
 
 

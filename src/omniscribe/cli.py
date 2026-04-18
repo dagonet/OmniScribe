@@ -13,6 +13,7 @@ from rich.logging import RichHandler
 
 from omniscribe import __version__
 from omniscribe.acquire.downloader import download_video
+from omniscribe.acquire.platform import Platform
 from omniscribe.asr.whisper import WhisperTranscriber
 from omniscribe.audio import extract_audio
 from omniscribe.config import OmniScribeConfig
@@ -20,6 +21,12 @@ from omniscribe.errors import OmniScribeError
 from omniscribe.ocr.deduplicator import dedup_segments
 from omniscribe.ocr.rapid_ocr import RapidOCREngine
 from omniscribe.output import Transcript, merge_channels, write_json
+
+# User-facing ``--platform`` choices: derived from ``Platform`` enum values plus
+# ``"auto"``. Excludes ``"unknown"`` — that's an internal auto-detect sentinel,
+# not a selectable profile. Config-level validator still accepts it so env-var
+# round-trips don't break.
+_PLATFORM_CHOICES = sorted(({"auto"} | {p.value for p in Platform}) - {"unknown"})
 
 app = typer.Typer(
     name="omniscribe",
@@ -92,7 +99,7 @@ def transcribe(
     platform: str | None = typer.Option(
         None,
         "--platform",
-        click_type=click.Choice(["auto", "tiktok", "youtube", "instagram", "generic"]),
+        click_type=click.Choice(_PLATFORM_CHOICES),
         help="Override OMNI_PLATFORM_PROFILE for this run.",
     ),
 ) -> None:

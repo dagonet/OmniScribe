@@ -8,7 +8,7 @@ to share across threads.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -62,8 +62,8 @@ class PlatformProfile:
     """
 
     name: str
-    ui_exclusion_zones: tuple[RelativeRect, ...] = field(default_factory=tuple)
-    ui_text_patterns: tuple[re.Pattern[str], ...] = field(default_factory=tuple)
+    ui_exclusion_zones: tuple[RelativeRect, ...] = ()
+    ui_text_patterns: tuple[re.Pattern[str], ...] = ()
     frequency_threshold: float = 0.95
 
 

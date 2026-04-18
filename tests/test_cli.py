@@ -38,6 +38,7 @@ def test_transcribe_help() -> None:
     assert "--ocr" in result.output
     assert "--no-ocr" in result.output
     assert "--ocr-language" in result.output
+    assert "--platform" in result.output
 
 
 def _patched_pipeline(tmp_path: Path):
