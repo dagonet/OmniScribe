@@ -112,6 +112,14 @@ def transcribe(
             "overrides OMNI_UI_FILTER_ENABLED."
         ),
     ),
+    scene_change: bool | None = typer.Option(
+        None,
+        "--scene-change/--no-scene-change",
+        help=(
+            "Enable or disable scene-change detection in the OCR frame sampler; "
+            "overrides OMNI_SCENE_CHANGE_ENABLED."
+        ),
+    ),
 ) -> None:
     """Download (if URL), extract audio, transcribe, and write JSON."""
     config: OmniScribeConfig = ctx.obj["config"]
@@ -123,6 +131,8 @@ def transcribe(
         config = config.model_copy(update={"platform_profile": platform})
     if ui_filter is not None:
         config = config.model_copy(update={"ui_filter_enabled": ui_filter})
+    if scene_change is not None:
+        config = config.model_copy(update={"scene_change_enabled": scene_change})
 
     ocr_active = ocr if ocr is not None else config.ocr_enabled
 
@@ -145,6 +155,7 @@ def transcribe(
                 pre_pattern = len(ocr_segments)
                 ocr_segments = filter_by_patterns(ocr_segments, profile.ui_text_patterns)
                 post_pattern = len(ocr_segments)
+                # frame_count is yielded frames (may be scene-change-reduced from nominal fps * duration)
                 ocr_segments = filter_by_frequency(
                     ocr_segments,
                     ocr_engine.last_frame_count,

@@ -476,6 +476,68 @@ def test_no_ui_filter_flag_keeps_sidebar_handle(tmp_path: Path, monkeypatch) -> 
     assert "@creator" in texts
 
 
+def test_scene_change_flag_merges_into_config_true(tmp_path: Path, monkeypatch) -> None:
+    """--scene-change merges scene_change_enabled=True into the OCR engine's config."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_SCENE_CHANGE_ENABLED", "false")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        mock_ocr_cls.return_value.extract.return_value = []
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output), "--ocr", "--scene-change"],
+        )
+
+    assert result.exit_code == 0, result.output
+    (ocr_cfg,), _ = mock_ocr_cls.call_args
+    assert ocr_cfg.scene_change_enabled is True
+
+
+def test_no_scene_change_flag_merges_into_config_false(tmp_path: Path, monkeypatch) -> None:
+    """--no-scene-change merges scene_change_enabled=False into the OCR engine's config."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        mock_ocr_cls.return_value.extract.return_value = []
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output), "--ocr", "--no-scene-change"],
+        )
+
+    assert result.exit_code == 0, result.output
+    (ocr_cfg,), _ = mock_ocr_cls.call_args
+    assert ocr_cfg.scene_change_enabled is False
+
+
+def test_scene_change_env_disabled_without_flag(tmp_path: Path, monkeypatch) -> None:
+    """OMNI_SCENE_CHANGE_ENABLED=false + no CLI flag → config has False."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_SCENE_CHANGE_ENABLED", "false")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        mock_ocr_cls.return_value.extract.return_value = []
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output), "--ocr"],
+        )
+
+    assert result.exit_code == 0, result.output
+    (ocr_cfg,), _ = mock_ocr_cls.call_args
+    assert ocr_cfg.scene_change_enabled is False
+
+
 def test_ui_filter_env_disabled_without_flag_keeps_handle(tmp_path: Path, monkeypatch) -> None:
     """OMNI_UI_FILTER_ENABLED=false + no CLI flag must let sidebar chrome through."""
     monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
