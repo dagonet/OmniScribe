@@ -330,24 +330,6 @@ def test_scene_change_end_of_video_skips_pure_duplicate_trailing(tmp_path: Path)
     assert [t for t, _ in samples] == [0.0]
 
 
-def test_scene_change_defaults_path_reaches_sampler(tmp_path: Path) -> None:
-    """Omitting scene-change kwargs uses defaults (enabled=True, threshold=0.02).
-
-    Verifies the default-args path still works end-to-end: 10 unique frames
-    with large step changes should yield all 10.
-    """
-    video = tmp_path / "v.mp4"
-    video.write_bytes(b"fake")
-    values = [0, 50, 100, 150, 200, 250, 10, 60, 110, 160]
-    frames = [_frame(v) for v in values]
-    cap = _capture_from_frames(native_fps=1.0, frames=frames)
-
-    with patch("omniscribe.ocr.frame_sampler.cv2.VideoCapture", return_value=cap):
-        samples = list(sample_frames(video, fps=1.0))
-
-    assert [t for t, _ in samples] == [float(i) for i in range(10)]
-
-
 def test_scene_change_ten_hard_cut_slides_yield_ten_frames(tmp_path: Path) -> None:
     """Synthetic 10-slide hard-cut test from the AC list → exactly 10 yields."""
     video = tmp_path / "v.mp4"

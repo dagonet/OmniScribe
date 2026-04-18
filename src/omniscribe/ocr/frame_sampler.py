@@ -41,7 +41,7 @@ _DOWNSCALE_LONGEST_EDGE: int = 320
 
 
 def _downscale_gray(frame_bgr: np.ndarray) -> np.ndarray:
-    """Return a grayscale 320-longest-edge downscale of ``frame_bgr``.
+    """Return a grayscale ``_DOWNSCALE_LONGEST_EDGE``-longest-edge downscale of ``frame_bgr``.
 
     Uses ``cv2.INTER_AREA`` (recommended for shrinking) and
     ``cv2.COLOR_BGR2GRAY`` (slide-cut signal is color-invariant). The yielded
@@ -151,6 +151,9 @@ def sample_frames(
         last_small: np.ndarray | None = None
         last_timestamp: float = 0.0
         last_was_yielded = False
+        # Counts strided frames evaluated since the last yield (including the
+        # current one after the increment below). Force-yields when it reaches
+        # ``max_gap_frames``; resets to 0 on every yield.
         frames_since_yield = 0
         while True:
             ok, frame = cap.read()
@@ -166,6 +169,7 @@ def sample_frames(
                     last_frame_bgr = frame
                     last_small = curr_small
                     last_timestamp = timestamp
+                    frames_since_yield += 1
                     if last_yielded_small is None:
                         # First stride-picked frame — cold start, always yield.
                         yield (timestamp, frame)
@@ -179,14 +183,13 @@ def sample_frames(
                         last_yielded_small = curr_small
                         frames_since_yield = 0
                         last_was_yielded = True
-                    elif frames_since_yield + 1 >= max_gap_frames:
+                    elif frames_since_yield >= max_gap_frames:
                         # Forced yield: bounded max gap survived gradient drift.
                         yield (timestamp, frame)
                         last_yielded_small = curr_small
                         frames_since_yield = 0
                         last_was_yielded = True
                     else:
-                        frames_since_yield += 1
                         last_was_yielded = False
             frame_index += 1
 
