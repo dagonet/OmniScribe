@@ -6,6 +6,7 @@ import logging
 import shutil
 from pathlib import Path
 
+import click
 import typer
 from rich.console import Console
 from rich.logging import RichHandler
@@ -88,6 +89,12 @@ def transcribe(
         "--ocr-language",
         help="RapidOCR LangRec value (e.g. 'en', 'ch', 'japan'); overrides OMNI_OCR_LANGUAGE.",
     ),
+    platform: str | None = typer.Option(
+        None,
+        "--platform",
+        click_type=click.Choice(["auto", "tiktok", "youtube", "instagram", "generic"]),
+        help="Override OMNI_PLATFORM_PROFILE for this run.",
+    ),
 ) -> None:
     """Download (if URL), extract audio, transcribe, and write JSON."""
     config: OmniScribeConfig = ctx.obj["config"]
@@ -95,6 +102,8 @@ def transcribe(
         config = config.model_copy(update={"whisper_language": language})
     if ocr_language is not None:
         config = config.model_copy(update={"ocr_language": ocr_language})
+    if platform is not None:
+        config = config.model_copy(update={"platform_profile": platform})
 
     ocr_active = ocr if ocr is not None else config.ocr_enabled
 

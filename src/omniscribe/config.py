@@ -8,6 +8,10 @@ from pathlib import Path
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from omniscribe.acquire.platform import Platform
+
+_VALID_PLATFORM_PROFILES: frozenset[str] = frozenset({"auto"} | {p.value for p in Platform})
+
 
 class OmniScribeConfig(BaseSettings):
     """OmniScribe runtime configuration.
@@ -39,6 +43,7 @@ class OmniScribeConfig(BaseSettings):
 
     # ── Platform ─────────────────────────────────────────
     platform_profile: str = "auto"
+    ui_filter_enabled: bool = True
 
     # ── Dedup ────────────────────────────────────────────
     dedup_similarity_threshold: float = 0.85
@@ -63,3 +68,12 @@ class OmniScribeConfig(BaseSettings):
     def _empty_to_none(cls, v: object) -> object:
         """Coerce empty-string env values to ``None`` for optional fields."""
         return None if v == "" else v
+
+    @field_validator("platform_profile", mode="after")
+    @classmethod
+    def _validate_platform_profile(cls, v: str) -> str:
+        """Reject unknown platform profile names early at config construction."""
+        if v not in _VALID_PLATFORM_PROFILES:
+            allowed = ", ".join(sorted(_VALID_PLATFORM_PROFILES))
+            raise ValueError(f"platform_profile must be one of: {allowed}; got {v!r}")
+        return v

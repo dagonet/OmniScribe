@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 from typer.testing import CliRunner
 
 from omniscribe import __version__
@@ -334,3 +335,57 @@ def test_transcribe_zero_speech_zero_ocr_produces_empty_transcript(
     restored = Transcript.model_validate_json(output.read_text(encoding="utf-8"))
     assert restored.segments == []
     assert restored.language == "en"
+
+
+def test_transcribe_platform_flag_overrides_config(tmp_path: Path, monkeypatch) -> None:
+    """--platform tiktok on a non-TikTok source should override platform_profile."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        mock_ocr_cls.return_value.extract.return_value = []
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output), "--platform", "tiktok"],
+        )
+
+    assert result.exit_code == 0, result.output
+    # Sprint 3.1 plumbs --platform into config.platform_profile only; profile
+    # resolution + OCR wire-in land in Sprint 3.2. WhisperTranscriber is the
+    # first downstream consumer of the merged config, so inspect it.
+    (wh_cfg,), _ = mock_whisper_cls.call_args
+    assert wh_cfg.platform_profile == "tiktok"
+
+
+def test_transcribe_invalid_platform_flag_exits_nonzero(tmp_path: Path) -> None:
+    """--platform bogus should fail via click.Choice, not pydantic traceback."""
+    output = tmp_path / "out.json"
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", "fake.mp4", "--output", str(output), "--platform", "bogus"],
+    )
+    assert result.exit_code != 0
+    assert "Invalid value for '--platform'" in result.output
+
+
+def test_invalid_platform_profile_env_raises_validation_error(monkeypatch) -> None:
+    """OMNI_PLATFORM_PROFILE=bogus bypasses click.Choice but hits the pydantic validator."""
+    from pydantic import ValidationError
+
+    from omniscribe.config import OmniScribeConfig
+
+    monkeypatch.setenv("OMNI_PLATFORM_PROFILE", "bogus")
+    with pytest.raises(ValidationError):
+        OmniScribeConfig()
+
+
+def test_platform_profile_env_threads_into_config(monkeypatch) -> None:
+    """OMNI_PLATFORM_PROFILE=instagram (valid) should land in config."""
+    from omniscribe.config import OmniScribeConfig
+
+    monkeypatch.setenv("OMNI_PLATFORM_PROFILE", "instagram")
+    cfg = OmniScribeConfig()
+    assert cfg.platform_profile == "instagram"
