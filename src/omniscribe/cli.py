@@ -173,7 +173,11 @@ def transcribe(
                 min_duration=config.dedup_min_duration,
                 gap_tolerance=2.0 / config.ocr_sample_fps,
             )
-            segments = merge_channels(speech_segments, deduped_ocr_segments)
+            segments = merge_channels(
+                speech_segments,
+                deduped_ocr_segments,
+                threshold=config.merge_similarity_threshold,
+            )
         else:
             segments = speech_segments
 

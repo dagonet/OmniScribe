@@ -54,6 +54,12 @@ class OmniScribeConfig(BaseSettings):
     dedup_similarity_threshold: float = 0.85
     dedup_min_duration: float = 0.5
 
+    # ── Merge (cross-source speech↔OCR) ──────────────────
+    # Separate from ``dedup_similarity_threshold`` (same-source OCR dedup):
+    # cross-source may tolerate a lower bar as tuning data accumulates, and
+    # decoupling now is cheaper than renaming later.
+    merge_similarity_threshold: float = 0.85
+
     # ── LLM (optional) ───────────────────────────────────
     llm_enabled: bool = False
     llm_provider: str = "openai"
@@ -93,4 +99,17 @@ class OmniScribeConfig(BaseSettings):
         """
         if not (0.0 < v <= 1.0):
             raise ValueError(f"scene_change_threshold must be in (0.0, 1.0]; got {v!r}")
+        return v
+
+    @field_validator("merge_similarity_threshold", mode="after")
+    @classmethod
+    def _validate_merge_similarity_threshold(cls, v: float) -> float:
+        """Reject cross-source merge thresholds outside ``[0.0, 1.0]``.
+
+        The value is a similarity floor compared against
+        ``rapidfuzz.fuzz.WRatio`` output scaled by 100 in
+        :func:`omniscribe.output.merge_channels`.
+        """
+        if not (0.0 <= v <= 1.0):
+            raise ValueError(f"merge_similarity_threshold must be in [0.0, 1.0]; got {v!r}")
         return v

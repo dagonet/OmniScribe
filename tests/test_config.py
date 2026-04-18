@@ -106,3 +106,37 @@ def test_scene_change_enabled_env_false_parses(monkeypatch: pytest.MonkeyPatch) 
     cfg = OmniScribeConfig()
 
     assert cfg.scene_change_enabled is False
+
+
+def test_merge_similarity_threshold_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sprint 4.1 — cross-source merge threshold defaults to 0.85."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.merge_similarity_threshold == 0.85
+
+
+@pytest.mark.parametrize("bad", [-0.1, 1.01, 2.0, -1.0])
+def test_merge_similarity_threshold_out_of_range_raises(
+    monkeypatch: pytest.MonkeyPatch, bad: float
+) -> None:
+    """merge_similarity_threshold must be in ``[0.0, 1.0]``; out-of-range rejects."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        OmniScribeConfig(merge_similarity_threshold=bad)
+
+
+@pytest.mark.parametrize("ok", [0.0, 0.5, 1.0])
+def test_merge_similarity_threshold_boundaries_accepted(
+    monkeypatch: pytest.MonkeyPatch, ok: float
+) -> None:
+    """Closed-interval boundaries ``0.0`` and ``1.0`` are accepted."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig(merge_similarity_threshold=ok)
+
+    assert cfg.merge_similarity_threshold == ok
