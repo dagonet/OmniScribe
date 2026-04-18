@@ -16,7 +16,7 @@ Video URL (TikTok, YouTube, Reels, Shorts, ...) or local file
         │
         ├──▶ Audio ──▶ faster-whisper (large-v3-turbo) ──▶ Speech transcript
         │
-        └──▶ Frames ──▶ PaddleOCR (GPU) ──▶ On-screen text
+        └──▶ Frames ──▶ RapidOCR (GPU via ONNXRuntime) ──▶ On-screen text
                                                     │
                               ┌──────────────────────┘
                               ▼
@@ -48,11 +48,11 @@ omniscribe transcribe ./video.mp4 --format json --output transcript.json
 # Speech-only (no OCR)
 omniscribe transcribe <url> --no-ocr
 
-# OCR-only (no speech)
-omniscribe transcribe <url> --no-asr
+# SubRip subtitles
+omniscribe transcribe ./video.mp4 --format srt --output transcript.srt
 
-# Batch mode
-omniscribe batch urls.txt --output-dir ./transcripts/
+# Markdown digest
+omniscribe transcribe ./video.mp4 --format md --output transcript.md
 ```
 
 ## Supported Platforms
@@ -74,9 +74,8 @@ Videos from any other platform work too — just without UI-specific filtering.
 - **Platform-aware** — UI element filtering profiles for TikTok, YouTube, Instagram
 - **Fully local** — All processing runs on your machine, no API keys or cloud services
 - **GPU-accelerated** — Optimized for NVIDIA GPUs (CUDA), works on CPU too
-- **Multiple output formats** — JSON, plain text, SRT, VTT, Markdown
+- **Multiple output formats** — JSON, TXT, SRT, Markdown
 - **Multilingual** — Supports 80+ languages for both speech and text recognition
-- **Optional LLM cleanup** — Use a local LLM (via ollama) to polish the transcript
 
 ## Requirements
 
