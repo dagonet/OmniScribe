@@ -308,7 +308,7 @@ Merged output:
 | Phase 1 — Foundation & ASR | Complete | `docs/plans/phase-1-foundation-asr.md`; merged through Sprint 1.2 |
 | Phase 2 — OCR pipeline | Complete | `docs/plans/phase-2-5-scene-change.md` (Sprint 2.5, PR #3 — `894fae2`); Sprints 2.1–2.2 merged earlier |
 | Phase 3 — Platform profiles & UI filtering | Complete | Sprint 3.1 (`3d855cc`), Sprint 3.2 (`05bbe37`) |
-| Phase 4 — Merge engine | In progress | `docs/plans/phase-4-merge-engine.md`; Sprint 4.1 (PR #4, `5c81ced`) merged; Sprint 4.2 (format writers + `--format`) in review |
+| Phase 4 — Merge engine | Complete | `docs/plans/phase-4-merge-engine.md`; Sprint 4.1 (PR #4, `5c81ced`) and Sprint 4.2 (PR #5, `b2a89d6`) merged |
 | Phase 5 — Polish & extensibility | Not started | — |
 | Phase 6 — Advanced features | Not started | — |
 

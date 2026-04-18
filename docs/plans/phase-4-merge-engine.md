@@ -49,7 +49,7 @@ translation) remain out of scope.
 - CLI pipeline re-wired: `dedup_segments(ocr)` feeds into `merge_channels(...)`
   rather than a naive `sorted(speech + ocr)`.
 
-### Sprint 4.2 — output format writers + `--format` flag *(in review)*
+### Sprint 4.2 — output format writers + `--format` flag *(merged, PR #5, `b2a89d6`)*
 
 - New writers in `src/omniscribe/output.py`:
   - `write_txt(transcript, path)` — one segment per line, no annotations.
@@ -135,3 +135,22 @@ uv run omniscribe transcribe path/to/sample.mp4 -o /tmp/out.any \
   resolver, dispatch.
 - `G:\git\OmniScribe\tests\test_output.py` — writer + `merge_channels` tests.
 - `G:\git\OmniScribe\tests\test_cli.py` — format dispatch + precedence tests.
+
+## Close-out
+
+Phase 4 is **complete**. Shipped via two squash-merged PRs against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 4.1 | #4 | `5c81ced` | `merge_channels` cross-source dedup with strict-overlap + `rapidfuzz.WRatio`, emits `[BOTH]` on collapse; new `merge_similarity_threshold` config field. |
+| 4.2 | #5 | `b2a89d6` | `write_txt` / `write_srt` / `write_markdown` writers; `--format` flag with `click.Choice`; four-tier precedence resolver (`--format` > env > path-suffix > `"json"` default). |
+
+Net test delta: +27 tests (per-format writers, precedence branches, `output_format` validator).
+
+Follow-ups explicitly **deferred** out of Phase 4 and not yet scheduled:
+
+- VTT writer + `--format vtt` choice.
+- LLM cleanup pass (Ollama-backed `merge/llm_cleanup.py`).
+- Batch mode (`omniscribe batch urls.txt --output-dir ...`).
+- Docker / docker-compose for deployment.
+- CI/CD (GitHub Actions) — scheduled for Sprint 5.2.
