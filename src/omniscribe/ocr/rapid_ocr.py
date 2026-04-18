@@ -46,7 +46,10 @@ class RapidOCREngine:
 
     After each :meth:`extract` call, ``self.last_frame_count`` holds the number of
     frames yielded by the sampler — used by the CLI for the
-    ``"OCR: N segments from M frames"`` log line.
+    ``"OCR: N segments from M frames"`` log line. With Sprint 2.5 scene-change
+    detection enabled (default), *yielded* frames may be fewer than
+    ``ocr_sample_fps * duration``; the counter is the correct denominator for
+    downstream frequency-based UI filtering.
     """
 
     def __init__(
@@ -110,7 +113,12 @@ class RapidOCREngine:
             and profile is not None
             and bool(profile.ui_exclusion_zones)
         )
-        for timestamp, frame in sample_frames(video_path, self._config.ocr_sample_fps):
+        for timestamp, frame in sample_frames(
+            video_path,
+            self._config.ocr_sample_fps,
+            scene_change_enabled=self._config.scene_change_enabled,
+            scene_change_threshold=self._config.scene_change_threshold,
+        ):
             frame_count += 1
             processed_frame = preprocess(frame)
             if apply_mask and profile is not None:

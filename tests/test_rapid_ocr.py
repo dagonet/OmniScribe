@@ -26,6 +26,10 @@ from omniscribe.ocr.rapid_ocr import RapidOCREngine
 
 
 def _make_config(**overrides: object) -> OmniScribeConfig:
+    # Sprint 2.5: ``scene_change_enabled`` / ``scene_change_threshold`` are
+    # omitted here on purpose — Pydantic supplies their defaults (True, 0.02).
+    # Tests that patch ``sample_frames`` don't care about the values, and
+    # ``test_extract_passes_scene_change_kwargs_to_sampler`` overrides explicitly.
     base: dict[str, object] = {
         "ocr_enabled": True,
         "ocr_language": "en",
@@ -336,6 +340,33 @@ def test_extract_does_not_call_mask_zones_when_ui_filter_disabled(tmp_path: Path
         RapidOCREngine(config, profile=TIKTOK_PROFILE).extract(video)
 
     mock_mask.assert_not_called()
+
+
+def test_extract_passes_scene_change_kwargs_to_sampler(tmp_path: Path) -> None:
+    """Sprint 2.5 — ``RapidOCREngine.extract`` plumbs scene-change config into
+    ``sample_frames`` as kwargs (not positional), so the sampler signature stays
+    stable for other callers.
+    """
+    config = _make_config(scene_change_enabled=True, scene_change_threshold=0.05)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "omniscribe.ocr.rapid_ocr.sample_frames",
+            return_value=iter([]),
+        ) as mock_sampler,
+    ):
+        RapidOCREngine(config).extract(video)
+
+    assert mock_sampler.call_count == 1
+    _, kwargs = mock_sampler.call_args
+    assert kwargs["scene_change_enabled"] is True
+    assert kwargs["scene_change_threshold"] == 0.05
 
 
 def test_extract_records_last_frame_count(tmp_path: Path) -> None:
