@@ -62,3 +62,47 @@ def test_temp_dir_is_path_under_platform_temp(monkeypatch: pytest.MonkeyPatch) -
 
     assert isinstance(cfg.temp_dir, Path)
     assert str(cfg.temp_dir).startswith(tempfile.gettempdir())
+
+
+def test_scene_change_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sprint 2.5 — documented defaults for scene-change fields."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.scene_change_enabled is True
+    assert cfg.scene_change_threshold == 0.02
+
+
+@pytest.mark.parametrize("bad", [0.0, 1.5, -0.1])
+def test_scene_change_threshold_out_of_range_raises(
+    monkeypatch: pytest.MonkeyPatch, bad: float
+) -> None:
+    """scene_change_threshold must be in (0.0, 1.0]; boundaries and negatives reject."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        OmniScribeConfig(scene_change_threshold=bad)
+
+
+def test_scene_change_threshold_upper_boundary_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Upper boundary value 1.0 is accepted (closed interval)."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig(scene_change_threshold=1.0)
+
+    assert cfg.scene_change_threshold == 1.0
+
+
+def test_scene_change_enabled_env_false_parses(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMNI_SCENE_CHANGE_ENABLED=false round-trips to scene_change_enabled=False."""
+    _strip_omni_env(monkeypatch)
+    monkeypatch.setenv("OMNI_SCENE_CHANGE_ENABLED", "false")
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.scene_change_enabled is False

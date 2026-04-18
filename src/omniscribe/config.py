@@ -43,6 +43,8 @@ class OmniScribeConfig(BaseSettings):
     ocr_sample_fps: float = 1.0
     ocr_min_confidence: float = 0.6
     ocr_device: str = "cuda"
+    scene_change_enabled: bool = True
+    scene_change_threshold: float = 0.02
 
     # ── Platform ─────────────────────────────────────────
     platform_profile: str = "auto"
@@ -79,4 +81,16 @@ class OmniScribeConfig(BaseSettings):
         if v not in _VALID_PLATFORM_PROFILES:
             allowed = ", ".join(sorted(_VALID_PLATFORM_PROFILES))
             raise ValueError(f"platform_profile must be one of: {allowed}; got {v!r}")
+        return v
+
+    @field_validator("scene_change_threshold", mode="after")
+    @classmethod
+    def _validate_scene_change_threshold(cls, v: float) -> float:
+        """Reject thresholds outside (0.0, 1.0].
+
+        ``0.0`` means "every frame passes" (defeats the feature); values above
+        ``1.0`` are impossible for a mean-absdiff normalized into ``[0.0, 1.0]``.
+        """
+        if not (0.0 < v <= 1.0):
+            raise ValueError(f"scene_change_threshold must be in (0.0, 1.0]; got {v!r}")
         return v
