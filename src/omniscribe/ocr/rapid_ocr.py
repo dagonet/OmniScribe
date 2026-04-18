@@ -19,12 +19,14 @@ from rapidocr import LangRec, RapidOCR
 from omniscribe.errors import OmniScribeError
 from omniscribe.ocr.frame_sampler import sample_frames
 from omniscribe.ocr.preprocessor import preprocess
+from omniscribe.ocr.ui_filter import mask_zones
 from omniscribe.output import TranscriptSegment
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from omniscribe.config import OmniScribeConfig
+    from omniscribe.platforms.base import PlatformProfile
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +49,14 @@ class RapidOCREngine:
     ``"OCR: N segments from M frames"`` log line.
     """
 
-    def __init__(self, config: OmniScribeConfig) -> None:
+    def __init__(
+        self,
+        config: OmniScribeConfig,
+        *,
+        profile: PlatformProfile | None = None,
+    ) -> None:
         self._config = config
+        self._profile = profile
         self._engine: RapidOCR | None = None
         self.last_frame_count: int = 0
 
@@ -96,9 +104,18 @@ class RapidOCREngine:
 
         frame_count = 0
         segments: list[TranscriptSegment] = []
+        mask_ui_zones = (
+            self._config.ui_filter_enabled
+            and self._profile is not None
+            and bool(self._profile.ui_exclusion_zones)
+        )
         for timestamp, frame in sample_frames(video_path, self._config.ocr_sample_fps):
             frame_count += 1
-            result = engine(preprocess(frame))
+            processed_frame = preprocess(frame)
+            if mask_ui_zones:
+                assert self._profile is not None  # narrow for mypy
+                processed_frame = mask_zones(processed_frame, self._profile.ui_exclusion_zones)
+            result = engine(processed_frame)
             texts = getattr(result, "txts", ()) or ()
             scores = getattr(result, "scores", ()) or ()
             for text, score in zip(texts, scores, strict=False):
