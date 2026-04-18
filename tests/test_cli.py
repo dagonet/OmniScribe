@@ -191,6 +191,9 @@ def test_transcribe_ocr_flag_interleaves_segments(tmp_path: Path, monkeypatch) -
             _ocr_seg(0.5, "first overlay text"),
             _ocr_seg(2.0, "completely different caption"),
         ]
+        # Sprint 3.2 frequency filter divides by last_frame_count; set enough
+        # frames that 1/N is below the 0.95 threshold so neither overlay is dropped.
+        mock_ocr_cls.return_value.last_frame_count = 10
         result = CliRunner().invoke(
             app,
             [
@@ -298,6 +301,8 @@ def test_transcribe_ocr_dedup_collapses_duplicate_overlays(tmp_path: Path, monke
     with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
         mock_whisper_cls.return_value.transcribe.return_value = (speech, "en")
         mock_ocr_cls.return_value.extract.return_value = ocr_segments
+        # 100 frames → 3/100 ratio per text, below 0.95 freq threshold.
+        mock_ocr_cls.return_value.last_frame_count = 100
         result = CliRunner().invoke(
             app,
             ["transcribe", "fake.mp4", "--output", str(output), "--ocr"],
@@ -390,3 +395,121 @@ def test_platform_profile_env_threads_into_config(monkeypatch) -> None:
     monkeypatch.setenv("OMNI_PLATFORM_PROFILE", "instagram")
     cfg = OmniScribeConfig()
     assert cfg.platform_profile == "instagram"
+
+
+def test_ui_filter_tiktok_drops_sidebar_handle(tmp_path: Path, monkeypatch) -> None:
+    """--platform tiktok --ocr with a sidebar handle + body text:
+    the handle must be dropped by the pattern filter; the body survives."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
+    output = tmp_path / "out.json"
+
+    ocr_segments = [
+        _ocr_seg(0.5, "@creator"),
+        _ocr_seg(0.5, "hello world"),
+    ]
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        engine_instance = mock_ocr_cls.return_value
+        engine_instance.extract.return_value = ocr_segments
+        # 10 frames so "hello world"'s ratio is 1/10 < 0.95 (kept).
+        engine_instance.last_frame_count = 10
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe",
+                "fake.mp4",
+                "--output",
+                str(output),
+                "--platform",
+                "tiktok",
+                "--ocr",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    restored = Transcript.model_validate_json(output.read_text(encoding="utf-8"))
+    texts = [s.text for s in restored.segments]
+    assert "hello world" in texts
+    assert "@creator" not in texts
+
+
+def test_no_ui_filter_flag_keeps_sidebar_handle(tmp_path: Path, monkeypatch) -> None:
+    """With --no-ui-filter, the sidebar handle must NOT be dropped."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
+    output = tmp_path / "out.json"
+
+    ocr_segments = [
+        _ocr_seg(0.5, "@creator"),
+        _ocr_seg(0.5, "hello world"),
+    ]
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        engine_instance = mock_ocr_cls.return_value
+        engine_instance.extract.return_value = ocr_segments
+        engine_instance.last_frame_count = 1
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe",
+                "fake.mp4",
+                "--output",
+                str(output),
+                "--platform",
+                "tiktok",
+                "--ocr",
+                "--no-ui-filter",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    restored = Transcript.model_validate_json(output.read_text(encoding="utf-8"))
+    texts = [s.text for s in restored.segments]
+    assert "hello world" in texts
+    assert "@creator" in texts
+
+
+def test_ui_filter_env_disabled_without_flag_keeps_handle(tmp_path: Path, monkeypatch) -> None:
+    """OMNI_UI_FILTER_ENABLED=false + no CLI flag must let sidebar chrome through."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_DEDUP_MIN_DURATION", "0")
+    monkeypatch.setenv("OMNI_UI_FILTER_ENABLED", "false")
+    output = tmp_path / "out.json"
+
+    ocr_segments = [
+        _ocr_seg(0.5, "@creator"),
+        _ocr_seg(0.5, "hello world"),
+    ]
+
+    dl, ex, wh, oc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        engine_instance = mock_ocr_cls.return_value
+        engine_instance.extract.return_value = ocr_segments
+        engine_instance.last_frame_count = 1
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe",
+                "fake.mp4",
+                "--output",
+                str(output),
+                "--platform",
+                "tiktok",
+                "--ocr",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    restored = Transcript.model_validate_json(output.read_text(encoding="utf-8"))
+    texts = [s.text for s in restored.segments]
+    assert "hello world" in texts
+    assert "@creator" in texts

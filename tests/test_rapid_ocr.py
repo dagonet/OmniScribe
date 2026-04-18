@@ -284,6 +284,60 @@ def test_extract_wraps_engine_init_failure_as_omniscribe_error(tmp_path: Path) -
         RapidOCREngine(config).extract(video)
 
 
+def test_extract_calls_mask_zones_when_profile_and_ui_filter_enabled(tmp_path: Path) -> None:
+    """With a TikTok profile + ui_filter_enabled=True, mask_zones is called per frame
+    with the profile's exclusion zones."""
+    from omniscribe.platforms.tiktok import TIKTOK_PROFILE
+
+    config = _make_config(ui_filter_enabled=True)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "omniscribe.ocr.rapid_ocr.sample_frames",
+            return_value=iter([(0.0, _fake_frame()), (1.0, _fake_frame())]),
+        ),
+        patch("omniscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
+    ):
+        mock_mask.side_effect = lambda gray, zones: gray  # pass through
+        RapidOCREngine(config, profile=TIKTOK_PROFILE).extract(video)
+
+    assert mock_mask.call_count == 2
+    for call in mock_mask.call_args_list:
+        _, zones = call.args
+        assert zones == TIKTOK_PROFILE.ui_exclusion_zones
+
+
+def test_extract_does_not_call_mask_zones_when_ui_filter_disabled(tmp_path: Path) -> None:
+    """With ui_filter_enabled=False, mask_zones is never called even if a profile
+    is supplied."""
+    from omniscribe.platforms.tiktok import TIKTOK_PROFILE
+
+    config = _make_config(ui_filter_enabled=False)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "omniscribe.ocr.rapid_ocr.sample_frames",
+            return_value=iter([(0.0, _fake_frame()), (1.0, _fake_frame())]),
+        ),
+        patch("omniscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
+    ):
+        RapidOCREngine(config, profile=TIKTOK_PROFILE).extract(video)
+
+    mock_mask.assert_not_called()
+
+
 def test_extract_records_last_frame_count(tmp_path: Path) -> None:
     """``last_frame_count`` must equal the number of frames the sampler yielded
     (used by the CLI's ``"OCR: N segments from M frames"`` log line).

@@ -20,7 +20,9 @@ from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
 from omniscribe.ocr.deduplicator import dedup_segments
 from omniscribe.ocr.rapid_ocr import RapidOCREngine
+from omniscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
 from omniscribe.output import Transcript, merge_channels, write_json
+from omniscribe.platforms.registry import resolve_profile
 
 # User-facing ``--platform`` choices: derived from ``Platform`` enum values plus
 # ``"auto"``. Excludes ``"unknown"`` — that's an internal auto-detect sentinel,
@@ -102,6 +104,14 @@ def transcribe(
         click_type=click.Choice(_PLATFORM_CHOICES),
         help="Override OMNI_PLATFORM_PROFILE for this run.",
     ),
+    ui_filter: bool | None = typer.Option(
+        None,
+        "--ui-filter/--no-ui-filter",
+        help=(
+            "Enable or disable UI filtering (zone masking + pattern + frequency); "
+            "overrides OMNI_UI_FILTER_ENABLED."
+        ),
+    ),
 ) -> None:
     """Download (if URL), extract audio, transcribe, and write JSON."""
     config: OmniScribeConfig = ctx.obj["config"]
@@ -111,6 +121,8 @@ def transcribe(
         config = config.model_copy(update={"ocr_language": ocr_language})
     if platform is not None:
         config = config.model_copy(update={"platform_profile": platform})
+    if ui_filter is not None:
+        config = config.model_copy(update={"ui_filter_enabled": ui_filter})
 
     ocr_active = ocr if ocr is not None else config.ocr_enabled
 
@@ -121,13 +133,29 @@ def transcribe(
         speech_segments, detected_language = WhisperTranscriber(config).transcribe(audio_path)
 
         if ocr_active:
-            ocr_engine = RapidOCREngine(config)
+            profile = resolve_profile(config, source)
+            ocr_engine = RapidOCREngine(config, profile=profile)
             ocr_segments = ocr_engine.extract(video_path)
             logger.info(
                 "OCR: %d segments from %d frames",
                 len(ocr_segments),
                 ocr_engine.last_frame_count,
             )
+            if config.ui_filter_enabled:
+                pre_pattern = len(ocr_segments)
+                ocr_segments = filter_by_patterns(ocr_segments, profile.ui_text_patterns)
+                post_pattern = len(ocr_segments)
+                ocr_segments = filter_by_frequency(
+                    ocr_segments,
+                    ocr_engine.last_frame_count,
+                    profile.frequency_threshold,
+                )
+                post_freq = len(ocr_segments)
+                logger.info(
+                    "UI filter: dropped %d pattern-matches, %d frequency-hits",
+                    pre_pattern - post_pattern,
+                    post_pattern - post_freq,
+                )
             deduped_ocr_segments = dedup_segments(
                 ocr_segments,
                 threshold=config.dedup_similarity_threshold,
