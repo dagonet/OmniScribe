@@ -9,9 +9,22 @@ the already-bound alias untouched and the real class still runs.
 from __future__ import annotations
 
 import logging
+import os
 import wave
 from collections.abc import Iterator
 from pathlib import Path
+
+# Neutralize Rich's TTY-dependent styling before Typer imports. On GitHub Actions
+# (``CI=true``/``GITHUB_ACTIONS=true``) Rich emits bold/dim escape codes *inside*
+# quoted flag names, which breaks substring assertions in CLI tests (e.g.
+# ``"--output"``, ``"Invalid value for '--platform'"``). ``NO_COLOR`` only
+# disables color per no-color.org — bold/dim persist — so the reliable switch is
+# ``TERM=dumb``, which Rich treats as a non-styling terminal. ``COLUMNS=200``
+# stops panel borders from wrapping long flag names across lines. Must run at
+# module import (before ``from omniscribe.cli import app``) because Rich caches
+# terminal detection when the Typer app is first constructed.
+os.environ["TERM"] = "dumb"
+os.environ["COLUMNS"] = "200"
 
 import pytest
 
