@@ -53,3 +53,16 @@ def reset_logging() -> Iterator[None]:
     root.handlers.clear()
     root.handlers.extend(saved_handlers)
     root.level = saved_level
+
+
+@pytest.fixture(autouse=True)
+def _wide_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin terminal width so Typer/Rich help + error panels don't wrap flag names.
+
+    CI runs on Linux with no TTY attached, which makes Rich fall back to an 80-column
+    width and wrap ``--output`` / ``--platform`` / ``Invalid value for '--format'``
+    across panel borders — breaking substring assertions in CLI tests. Windows
+    developers hit a wider default and never see the wrap. Pinning ``COLUMNS=200``
+    keeps flag names on one line everywhere.
+    """
+    monkeypatch.setenv("COLUMNS", "200")
