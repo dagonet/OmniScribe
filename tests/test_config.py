@@ -46,12 +46,10 @@ def test_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_empty_string_coerced_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
     """Empty-string env values for optional fields become None."""
     monkeypatch.setenv("OMNI_WHISPER_LANGUAGE", "")
-    monkeypatch.setenv("OMNI_LLM_API_KEY", "")
 
     cfg = OmniScribeConfig()
 
     assert cfg.whisper_language is None
-    assert cfg.llm_api_key is None
 
 
 def test_temp_dir_is_path_under_platform_temp(monkeypatch: pytest.MonkeyPatch) -> None:

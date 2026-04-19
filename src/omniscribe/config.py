@@ -65,12 +65,6 @@ class OmniScribeConfig(BaseSettings):
     # decoupling now is cheaper than renaming later.
     merge_similarity_threshold: float = 0.85
 
-    # ── LLM (optional) ───────────────────────────────────
-    llm_enabled: bool = False
-    llm_provider: str = "openai"
-    llm_model: str = "gpt-4o-mini"
-    llm_api_key: str | None = None
-
     # ── Output ───────────────────────────────────────────
     # ``Literal`` already rejects invalid env values automatically; the
     # explicit validator below is belt-and-suspenders — it produces a more
@@ -82,7 +76,7 @@ class OmniScribeConfig(BaseSettings):
     keep_temp_files: bool = False
     log_level: str = "INFO"
 
-    @field_validator("whisper_language", "llm_api_key", mode="before")
+    @field_validator("whisper_language", mode="before")
     @classmethod
     def _empty_to_none(cls, v: object) -> object:
         """Coerce empty-string env values to ``None`` for optional fields."""

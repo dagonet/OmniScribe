@@ -71,7 +71,7 @@ Dozens of tools transcribe the *spoken audio* of videos (ElevenLabs, Descript, T
 
 | Component | Choice | Rationale |
 |---|---|---|
-| **Language** | Python 3.11+ | Ecosystem support for ML/AI libs |
+| **Language** | Python 3.11 or 3.12 | Ecosystem support for ML/AI libs |
 | **ASR** | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (large-v3-turbo) | Up to 4x faster than openai/whisper, CTranslate2 backend, FP16/INT8 on GPU, batched inference |
 | **OCR** | [RapidOCR](https://github.com/RapidAI/RapidOCR) | PP-OCR models via ONNXRuntime — lighter deps than PaddleOCR (no `paddlepaddle-gpu` wheel needed), same PP-OCRv4/v5 accuracy on scene text, 80+ languages, GPU optional |
 | **Video download** | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | De-facto standard, supports hundreds of platforms, metadata extraction |
@@ -309,7 +309,7 @@ Merged output:
 | Phase 2 — OCR pipeline | Complete | `docs/plans/phase-2-5-scene-change.md` (Sprint 2.5, PR #3 — `894fae2`); Sprints 2.1–2.2 merged earlier |
 | Phase 3 — Platform profiles & UI filtering | Complete | Sprint 3.1 (`3d855cc`), Sprint 3.2 (`05bbe37`) |
 | Phase 4 — Merge engine | Complete | `docs/plans/phase-4-merge-engine.md`; Sprint 4.1 (PR #4, `5c81ced`) and Sprint 4.2 (PR #5, `b2a89d6`) merged |
-| Phase 5 — Polish & extensibility | Not started | — |
+| Phase 5 — Polish & extensibility | In progress | Sprint 5.1 (PR #6, `530902f`, doc trust-repair) + Sprint 5.2 (PR #7, `db3e4b1`, CI/CD) merged; LLM cleanup / batch / Docker pending |
 | Phase 6 — Advanced features | Not started | — |
 
 ### Phase 6 (Future): Advanced Features
@@ -326,48 +326,7 @@ Ideas for later, not in initial scope:
 
 ## Configuration Model
 
-```python
-class OmniScribeConfig(BaseSettings):
-    # ASR
-    whisper_model: str = "large-v3-turbo"
-    whisper_device: str = "cuda"            # cuda, cpu, auto
-    whisper_compute_type: str = "float16"   # float16, int8_float16, int8
-    whisper_language: str | None = None      # None = auto-detect
-    whisper_batch_size: int = 16
-
-    # OCR
-    ocr_engine: str = "paddleocr"
-    ocr_languages: list[str] = ["en", "de"]
-    ocr_confidence_threshold: float = 0.6
-    ocr_frame_interval: float = 0.5         # seconds between sampled frames
-    ocr_use_scene_detection: bool = True
-
-    # Platform
-    platform_auto_detect: bool = True
-    platform_override: str | None = None    # force a specific platform profile
-    ui_filter_enabled: bool = True
-
-    # Merge
-    dedup_similarity_threshold: float = 0.85  # fuzzy match threshold
-    dedup_strategy: str = "prefer_asr"        # prefer_asr, prefer_ocr, keep_both
-
-    # LLM (optional)
-    llm_cleanup_enabled: bool = False
-    llm_model: str = "llama3"
-    llm_base_url: str = "http://localhost:11434"  # ollama default
-
-    # Output
-    output_format: str = "json"              # json, txt, srt, vtt, md
-    include_metadata: bool = True
-    include_confidence_scores: bool = False
-
-    # General
-    temp_dir: str = "/tmp/omniscribe"
-    keep_temp_files: bool = False
-    log_level: str = "INFO"
-
-    model_config = SettingsConfigDict(env_prefix="OMNI_")
-```
+See `src/omniscribe/config.py` (`OmniScribeConfig`) for the authoritative field list; the `OMNI_` env prefix maps `OMNI_WHISPER_MODEL` → `whisper_model` etc.
 
 ## CLI Interface
 
