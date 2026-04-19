@@ -15,7 +15,7 @@ Thanks for your interest in contributing! OmniScribe is in early development and
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.11 or 3.12
 - NVIDIA GPU with CUDA (optional but recommended)
 - ffmpeg installed and on PATH
 - [uv](https://docs.astral.sh/uv/) package manager

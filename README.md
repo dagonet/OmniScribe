@@ -1,6 +1,6 @@
 [![CI](https://github.com/dagonet/OmniScribe/actions/workflows/ci.yml/badge.svg)](https://github.com/dagonet/OmniScribe/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11 | 3.12](https://img.shields.io/badge/Python-3.11_%7C_3.12-blue.svg)](https://www.python.org/downloads/)
 [![Status: In Development](https://img.shields.io/badge/Status-In%20Development-orange.svg)]()
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
@@ -80,7 +80,7 @@ Videos from any other platform work too — just without UI-specific filtering.
 
 ## Requirements
 
-- Python 3.11+
+- Python 3.11 or 3.12
 - NVIDIA GPU with CUDA (recommended, 8+ GB VRAM)
 - ffmpeg
 
