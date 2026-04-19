@@ -9,9 +9,22 @@ the already-bound alias untouched and the real class still runs.
 from __future__ import annotations
 
 import logging
+import os
 import wave
 from collections.abc import Iterator
 from pathlib import Path
+
+# Neutralize Rich's TTY-dependent styling before Typer imports. On GitHub Actions
+# (``CI=true``/``GITHUB_ACTIONS=true``) Rich emits bold/dim escape codes *inside*
+# quoted flag names, which breaks substring assertions in CLI tests (e.g.
+# ``"--output"``, ``"Invalid value for '--platform'"``). ``NO_COLOR`` only
+# disables color per no-color.org — bold/dim persist — so the reliable switch is
+# ``TERM=dumb``, which Rich treats as a non-styling terminal. ``COLUMNS=200``
+# stops panel borders from wrapping long flag names across lines. Must run at
+# module import (before ``from omniscribe.cli import app``) because Rich caches
+# terminal detection when the Typer app is first constructed.
+os.environ["TERM"] = "dumb"
+os.environ["COLUMNS"] = "200"
 
 import pytest
 
@@ -53,16 +66,3 @@ def reset_logging() -> Iterator[None]:
     root.handlers.clear()
     root.handlers.extend(saved_handlers)
     root.level = saved_level
-
-
-@pytest.fixture(autouse=True)
-def _wide_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Pin terminal width so Typer/Rich help + error panels don't wrap flag names.
-
-    CI runs on Linux with no TTY attached, which makes Rich fall back to an 80-column
-    width and wrap ``--output`` / ``--platform`` / ``Invalid value for '--format'``
-    across panel borders — breaking substring assertions in CLI tests. Windows
-    developers hit a wider default and never see the wrap. Pinning ``COLUMNS=200``
-    keeps flag names on one line everywhere.
-    """
-    monkeypatch.setenv("COLUMNS", "200")
