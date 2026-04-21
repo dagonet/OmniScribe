@@ -10,7 +10,7 @@
       "WebFetch(*)",
       "mcp__git-tools__*",
       "mcp__github-tools__*",
-      "mcp__plugin_github_github__*",
+      "mcp__MCP_DOCKER__*",
       "mcp__dotnet-tools__*",
       "mcp__rust-tools__*",
       "mcp__ollama-tools__*",

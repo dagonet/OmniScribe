@@ -137,7 +137,7 @@ When spawning a developer agent, the PO MUST choose the correct `subagent_type` 
 - Reviews code quality, readability, adherence to coding standards.
 - Checks for: dead code, magic numbers, missing error handling, code duplication, overly complex methods.
 - Validates testing discipline: tests are meaningful, cover edge cases, and match acceptance criteria.
-- **Posts review findings on the pull request** via `mcp__plugin_github_github__pull_request_review_write` (event `COMMENT`).
+- **Posts review findings on the pull request** via `mcp__MCP_DOCKER__pull_request_review_write` (event `COMMENT`).
 - Review categories: `CRITICAL`, `WARNING`, `SUGGESTION`.
   - `CRITICAL`: Must fix before merge.
   - `WARNING`: Should fix, but non-blocking if justified.
@@ -151,7 +151,7 @@ When spawning a developer agent, the PO MUST choose the correct `subagent_type` 
 - Each workstream has a **dedicated** tester assigned to that workstream's task.
 - **Not spawned for T1 or T2 sprints** — PO verifies directly.
 - Spawned after code review passes (no open `CRITICAL` findings).
-- **Posts findings on the pull request** via `mcp__plugin_github_github__add_issue_comment` (PR number).
+- **Posts findings on the pull request** via `mcp__MCP_DOCKER__add_issue_comment` (PR number).
 - Reports: test results, data verification, log analysis.
 - Does **NOT** modify application source code.
 - Shuts down after verification is complete.
@@ -255,10 +255,10 @@ The `task-source` field in `PROJECT_CONTEXT.md` determines which column applies.
 | **Task definition** | GitHub Issue with acceptance criteria | `docs/plans/sprint-N-*.md` with task sections |
 | **RE output** | Issue markdown for PO to post | Plan file markdown for PO to save |
 | **Architect guidance** | Comment on the GitHub Issue | Inline `## Architect Guidance` section in plan file |
-| **Dev discovers task** | Dev reads issue via `mcp__plugin_github_github__issue_read` | PO inlines task AC + files in dev prompt; plan file path for full context |
-| **Review findings** | PR review via `mcp__plugin_github_github__pull_request_review_write` | PR review via `mcp__plugin_github_github__pull_request_review_write` |
-| **Test findings** | PR comment via `mcp__plugin_github_github__add_issue_comment` (PR number) | PR comment via `mcp__plugin_github_github__add_issue_comment` (PR number) |
-| **Close task** | PO closes GitHub Issue via `mcp__plugin_github_github__issue_write` | Task list (TaskUpdate) during sprint; MEMORY.md after sprint |
+| **Dev discovers task** | Dev reads issue via `mcp__MCP_DOCKER__issue_read` | PO inlines task AC + files in dev prompt; plan file path for full context |
+| **Review findings** | PR review via `mcp__MCP_DOCKER__pull_request_review_write` | PR review via `mcp__MCP_DOCKER__pull_request_review_write` |
+| **Test findings** | PR comment via `mcp__MCP_DOCKER__add_issue_comment` (PR number) | PR comment via `mcp__MCP_DOCKER__add_issue_comment` (PR number) |
+| **Close task** | PO closes GitHub Issue via `mcp__MCP_DOCKER__issue_write` | Task list (TaskUpdate) during sprint; MEMORY.md after sprint |
 | **Branch naming** | `feature/issue-{number}` or `bugfix/issue-{number}` | PO specifies per task in plan (e.g., `feature/calendar-tz-fix`) |
 | **Worktree naming** | `{base}/{project}-issue-{number}/` | `{base}/{project}-{branch-name}/` |
 | **Commit convention** | `issue-{number}: {description}` | `feat:` / `fix:` / `chore:` / `test:` / `docs:` prefixes |
@@ -630,7 +630,7 @@ When spawning an agent, include in the spawn prompt a `## Required Skills` block
 
 | subagent_type | Required Skills |
 |---|---|
-| `coder` (and all variant coders: `dotnet-coder`, `rust-coder`, `java-coder`, `python-coder`) | `test-driven-development`, `verification-before-completion`, `receiving-code-review` |
+| `coder` (and all variant coders: `dotnet-coder`, `rust-coder`, `java-coder`, `python-coder`) | `karpathy-guidelines`, `test-driven-development`, `verification-before-completion`, `receiving-code-review` |
 | `code-reviewer` | *(none — review is the agent's core job)* |
 | `tester` | `systematic-debugging`, `verification-before-completion` |
 | `test-writer` | `test-driven-development` |
@@ -651,6 +651,7 @@ Use these snippets verbatim when constructing spawn prompts. Append to the body 
 ```markdown
 ## Required Skills
 Invoke these via the Skill tool before beginning task work:
+- karpathy-guidelines
 - superpowers:test-driven-development
 - superpowers:verification-before-completion
 - superpowers:receiving-code-review
