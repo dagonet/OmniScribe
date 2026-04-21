@@ -859,6 +859,26 @@ def test_llm_cleanup_env_enabled_without_flag(tmp_path: Path, monkeypatch) -> No
     mock_cleanup.assert_called_once()
 
 
+def test_no_llm_cleanup_flag_overrides_env(tmp_path: Path, monkeypatch) -> None:
+    """--no-llm-cleanup with OMNI_LLM_CLEANUP_ENABLED=true → cleanup NOT called."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    monkeypatch.setenv("OMNI_LLM_CLEANUP_ENABLED", "true")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc, lc = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls, lc as mock_cleanup:
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        mock_ocr_cls.return_value.extract.return_value = []
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--no-llm-cleanup", "--output", str(output)],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_cleanup.assert_not_called()
+
+
 def test_llm_cleanup_error_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
     """OmniScribeError from cleanup → exit 1 + message on stderr."""
     monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
