@@ -152,4 +152,25 @@ diff asr.md both.md            # diffs only on [ON-SCREEN] / [BOTH] lines (ASR u
 
 ## Close-out
 
-_Appended by PO post-merge._
+Sprint 6.2 is **complete**. Shipped via one squash-merged PR against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 6.2 | #14 | `3339f89` | Opt-in Ollama-backed per-segment punctuation + capitalization cleanup on `[SPEECH]` segments. New `cleanup_speech_segments` in `merge/llm_cleanup.py` as a near-copy of Sprint 6.1's `cleanup_ocr_segments` (Rule of Three duplication held). Strict `_SPEECH_TARGET_SOURCES = frozenset({"SPEECH"})` gate — `BOTH` stays claimed by OCR cleanup. `"LLM ASR cleanup:"` log prefix distinguishes from 6.1's `"LLM cleanup:"` (module docstring documents the asymmetry). One new config field (`llm_asr_cleanup_enabled: bool = False`); `--asr-cleanup/--no-asr-cleanup` CLI flag; `_patched_pipeline` 5-tuple → 6-tuple. `cleanup_ocr_segments` byte-locked — 13 existing 6.1 tests unchanged. Zero new runtime deps. |
+
+Net test delta at ship: 249 → **268** tests passing (+19 new: 8 `test_llm_cleanup.py` per-function gate/rail/invariant + 1 integration smoke, 6 `test_cli.py` flag/env/negation-overrides-env/both-flags, 3 `test_config.py` env round-trips, +1 review-gap fixup cross-function invariant). Subsequent review-gap fixup added 2 more per-function gate tests for `cleanup_speech_segments` (availability + model-presence), bringing the final count to **270**. Integration smoke (`@pytest.mark.integration`) remains excluded by `addopts`; runs locally with `uv run pytest -m integration`.
+
+**Design-decision call-outs validated at ship:**
+- **Duplication over abstraction (Rule of Three)** — two consumers (`cleanup_ocr_segments` + `cleanup_speech_segments`) is not yet enough to extract shared helpers. Sprint 6.3's whole-transcript summary won't fit a per-segment helper anyway. Re-evaluate only if a third compatible consumer emerges.
+- **Module-top `try/except ImportError: Client = None`** — the 6.1 pattern held for 6.2. Tests patch at module scope, CLI import stays lazy-safe.
+- **`BOTH` passthrough on the ASR side** — strict SPEECH-only gate preserved the disjoint-targets invariant; the cross-function test `test_sequential_cleanup_respects_disjoint_targets` proves neither `source` is mutated and no segment is processed twice.
+- **Two flags, not a mega-flag** — `--llm-cleanup` and `--asr-cleanup` remain independent. Combined invocation runs OCR first, then ASR, in a deterministic order.
+
+Follow-ups explicitly **deferred** out of Sprint 6.2:
+
+- **Sprint 6.3** — Summary generation to `<output>.summary.txt`. Reuses the same `Client` + availability gate; different prompt shape (whole-transcript input) and output path. Third consumer would not share the per-segment loop, so 6.2's duplication is not a blocker.
+- **Per-language / per-platform prompt templates** — deferred; English-default prompt held for the tested locales.
+- **Multi-provider LLM abstraction, prompt caching, streaming, per-segment parallelism, retries** — all continue to be rejected (same as 6.1). Revisit only on concrete evidence.
+- **`_patched_pipeline` tuple-growth** — the 6-tuple works but is a code-smell warning. If Sprint 6.3 grows it to 7-tuple, convert to a `NamedTuple`/dataclass in that sprint.
+- `IMPLEMENTATION_PLAN.md` Phase 5 status stays "In progress" — 5.4 (batch mode) and 5.5 (Docker) are the remaining Phase 5 sprints. 5.3 (LLM cleanup) is now functionally complete across OCR (6.1) and ASR (6.2); 6.3 summary is optional polish.
+
