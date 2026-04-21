@@ -41,3 +41,21 @@ uv run omniscribe transcribe "https://www.tiktok.com/..." --ocr --output tt.json
 ## Out of scope
 
 Scene-change / ROI (Phase 3). Platform filters (Phase 3). ASR↔OCR merge + `source="BOTH"` (Phase 4). SRT/VTT/MD (Phase 5).
+
+## Close-out
+
+Sprint 2.2 is **complete**. Shipped via one squash-merged PR against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 2.2 | — | `ba8dd20` | Grayscale + CLAHE preprocessor for cleaner OCR input; cross-frame fuzzy-match deduplicator via rapidfuzz collapsing near-duplicate ON-SCREEN segments with temporal span; dedup integration into OCR pipeline before merge_channels. All 78 tests passing. |
+
+Net test delta at ship: 78 tests at `ba8dd20` (Phase 1's 38 + Phase 2's 40).
+
+Follow-ups explicitly **deferred** out of Sprint 2.2 and not yet scheduled:
+
+- Scene-change detection (Phase 2.5 — **shipped in Phase 2.5 (`894fae2`)**).
+- ROI-aware on-screen filtering (Phase 3).
+- ASR↔OCR merge engine with `source="BOTH"` tag (Phase 4).
+- SRT/VTT/MD output formatters (Phase 4).
+- Batch mode, LLM cleanup, Docker (Phase 5+).

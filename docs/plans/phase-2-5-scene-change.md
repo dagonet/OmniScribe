@@ -129,3 +129,20 @@ OMNI_SCENE_CHANGE_THRESHOLD=0.0 uv run omniscribe transcribe sample.mp4 --ocr
 - **Shot-boundary detection via background subtractor / optical flow** — Phase 2.6+ if needed.
 - **Real-video fixture-based tests** — synthetic np.array frames are deterministic, fast, and sufficient; fixture mp4s add repo weight for no signal.
 - **Phase 4+** — ASR↔OCR BOTH merge, SRT/VTT formatters, batch mode, LLM cleanup — untouched.
+
+## Close-out
+
+Phase 2.5 is **complete**. Shipped via one squash-merged PR against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 2.5 | #3 | `894fae2` | Pre-OCR scene-change detection via grayscale mean-absdiff at 320-longest-edge downscale. Yields first frame, any frame exceeding `scene_change_threshold` (default `0.02`), and a max-gap forced-yield every 30 s wall-clock. End-of-video rule force-yields the final stride-picked frame iff it differs from the last yield. Phase 2 behavior recoverable via `--no-scene-change`. Zero new runtime deps. All 11 acceptance criteria verified. |
+
+Net test delta at ship: 161/161 tests passing at `894fae2`. Current main (`9d6e416`, post-sprint-5-3) is at 224 tests.
+
+Follow-ups explicitly **deferred** out of Sprint 2.5 and not yet scheduled:
+
+- Adaptive / rolling-window threshold ("Phase 2.6" if real-world tuning data shows static threshold inadequate).
+- Shot-boundary detection via background subtractor / optical flow ("Phase 2.6+" if needed).
+- Per-platform `scene_change_threshold` overrides on `PlatformProfile` dataclasses (add only if a platform's profile actually needs a different default).
+- CLI surfacing for `--scene-change-threshold` and `--scene-change-max-gap` (currently env + config only; power users can set `OMNI_SCENE_CHANGE_THRESHOLD` / `OMNI_SCENE_CHANGE_ENABLED`).

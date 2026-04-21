@@ -74,3 +74,21 @@ Architect reports findings (one-page note posted back to the PO). Only after tha
 ## Out of scope
 
 Platform UI filters (Phase 3). ASR↔OCR merge, SRT/VTT/MD formatters, `source="BOTH"|"ON-SCREEN"` (Phase 4). Batch mode, LLM cleanup, Docker, `--format` toggle (Phase 5). OCR frame sampling (Phase 2).
+
+## Close-out
+
+Sprint 1.2 is **complete**. Shipped via one squash-merged PR against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 1.2 | — | `91bfaa7` | Audio extraction via ffmpeg subprocess, faster-whisper ASR with batched inference pipeline, JSON transcript writer with `TranscriptSegment` + `Transcript` models, and `omniscribe transcribe` CLI command wired end-to-end. |
+
+Net test delta at ship: 38 tests total at `91bfaa7` (part of Phase 1 cumulative count).
+
+Follow-ups explicitly **deferred** out of Sprint 1.2 and not yet scheduled:
+
+- OCR / frame sampling / dedup (Phase 2).
+- Platform UI filters (Phase 3).
+- ASR↔OCR merge, SRT/VTT/MD formatters, `source="BOTH"|"ON-SCREEN"` source tags (Phase 4).
+- Batch mode, LLM cleanup, Docker, `--format` toggle (Phase 5).
+- `Transcript.metadata/platform/processing_stats` fields (deferred until a concrete consumer exists).

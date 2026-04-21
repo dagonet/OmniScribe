@@ -63,8 +63,8 @@ OmniScribe uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) under the hood, which
 - ✅ TikTok
 - ✅ YouTube / YouTube Shorts
 - ✅ Instagram Reels
-- 🔲 Twitter/X (planned)
-- 🔲 Facebook (planned)
+- 🔲 Twitter/X (Phase 6 backlog)
+- 🔲 Facebook (Phase 6 backlog)
 
 Videos from any other platform work too — just without UI-specific filtering.
 
