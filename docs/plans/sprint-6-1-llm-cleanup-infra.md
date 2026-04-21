@@ -91,4 +91,19 @@ All must be green. If anything fails, fix it before returning.
 
 ## Close-out
 
-_Appended by PO post-merge._
+Sprint 6.1 is **complete**. Shipped via one squash-merged PR against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 6.1 | #12 | `d1aafc8` | Opt-in Ollama-backed per-segment OCR-artefact cleanup on `[ON-SCREEN]` + `[BOTH]` segments. New `merge/llm_cleanup.py` with no-op short-circuit, missing-extra gate, availability gate (narrow `ConnectionError` / `TimeoutError` / `OSError` / `httpx.HTTPError`), model-presence gate (defensive dual-attribute parse for ollama-python churn), per-segment `chat` loop with 2.0× hallucination length rail + empty-response rail, INFO count log. Four `llm_cleanup_*` config fields + `--llm-cleanup/--no-llm-cleanup` CLI flag. Zero new runtime deps. |
+
+Net test delta at ship: 224 → **249** tests passing (+25 new: 13 `test_llm_cleanup.py` + 7 `test_cli.py` + 4 `test_config.py` + 1 review-gap fixup). Integration smoke (`@pytest.mark.integration`) excluded by `addopts = "-m 'not integration'"` on CI; runs locally with `uv run pytest -m integration`.
+
+**Design refinement during implementation (flagged in PR):** the plan originally specified a function-local lazy `from ollama import Client`, but tests patch `omniscribe.merge.llm_cleanup.Client` at the module scope `unittest.mock.patch` targets — a function-local import leaves that name unbound and all patches fail. Shipped pattern: **module-top `try/except ImportError: Client = None`**, with a missing-extra gate inside the function. Still satisfies the "no `ImportError` at CLI startup" constraint, makes tests patch-natural.
+
+Follow-ups explicitly **deferred** out of Sprint 6.1 and tracked as next sprints:
+
+- **Sprint 6.2** — ASR punctuation cleanup on `SPEECH` segments. Reuses the same `Client`, gates, and safety rails; new prompt template targeting punctuation + capitalization; extends the target-source gate.
+- **Sprint 6.3** — Summary generation to a separate `<output>.summary.txt` artifact. Reuses the same `Client` + availability gate; different prompt shape (whole-transcript input) and output path.
+- Multi-provider LLM abstraction, prompt caching, streaming, per-segment parallelism, retries, pluggable prompt templates — all remain rejected. Revisit only on concrete evidence.
+- `IMPLEMENTATION_PLAN.md` Phase 5 status stays "In progress" — 5.4 (batch mode) and 5.5 (Docker) are the remaining Phase 5 sprints.
