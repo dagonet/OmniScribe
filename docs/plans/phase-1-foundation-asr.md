@@ -136,3 +136,23 @@ uv run omniscribe transcribe "https://www.youtube.com/watch?v=<clip>" \
 ## Out of scope
 
 OCR / frame sampling / dedup (Phase 2). Platform UI filters (Phase 3). ASR↔OCR merge, SRT/VTT/MD formatters, `source="BOTH"|"ON-SCREEN"` (Phase 4). Batch mode, LLM cleanup, Docker, `--format` toggle, `--no-asr`/`--no-ocr` flags (Phase 5). Diarisation, translation, web UI (Phase 6). `acquire/metadata.py`, `pipeline.py`, `logging_config.py`, `DownloadResult` Pydantic model, `TranscriptSegment.source` Literal, `Transcript.metadata/platform/processing_stats` — deferred until a concrete consumer appears.
+
+## Close-out
+
+Phase 1 is **complete**. Shipped via two squash-merged PRs against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 1.1 | — | `3479621` | Package scaffolding with config, env loading, platform detection, video downloader (local + yt-dlp), and `--version` callback. |
+| 1.2 | — | `91bfaa7` | Audio extraction via ffmpeg subprocess, faster-whisper ASR with batched inference, JSON transcript writer, and `omniscribe transcribe` CLI command end-to-end. |
+
+Net test delta at ship: 38 tests passing at `91bfaa7`.
+
+Follow-ups explicitly **deferred** out of Phase 1 and not yet scheduled:
+
+- OCR / frame sampling / dedup (Phase 2).
+- Platform UI filters (Phase 3).
+- ASR↔OCR merge, SRT/VTT/MD formatters, `source="BOTH"|"ON-SCREEN"` source tags (Phase 4).
+- Batch mode, LLM cleanup, Docker, `--format` toggle, `--no-asr`/`--no-ocr` flags (Phase 5).
+- Diarisation, translation, web UI (Phase 6).
+- `Transcript.metadata/platform/processing_stats` fields (deferred until a concrete consumer exists).

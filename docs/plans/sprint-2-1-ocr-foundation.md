@@ -66,3 +66,22 @@ Parent plan: `docs/plans/phase-2-ocr.md`. Builds on Phase 1 MVP at `91bfaa7`.
 ## Out of scope
 
 Preprocessor + dedup (Sprint 2.2). Scene-change / ROI (Phase 3). Platform filters (Phase 3). ASR↔OCR merge (Phase 4). SRT/VTT/MD + `--format` (Phase 5). Runtime CUDA→CPU fallback.
+
+## Close-out
+
+Sprint 2.1 is **complete**. Shipped via one squash-merged PR against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 2.1 | — | `e9b18c1` | RapidOCR engine (ONNX-based PP-OCRv4/v5, CUDA + CPU fallback via onnxruntime-gpu); frame sampler at configurable `ocr_sample_fps`; lazy-init `RapidOCREngine` wrapper; `--ocr` / `--ocr-language` CLI flags and env integration; `merge_channels` stable-sort for SPEECH↔OCR interleaving. 62 tests passing; manual GPU acceptance on RTX 4090. |
+
+Net test delta at ship: 62 tests at `e9b18c1` (Phase 1's 38 + Sprint 2.1's 24).
+
+Follow-ups explicitly **deferred** out of Sprint 2.1 and not yet scheduled:
+
+- Frame preprocessor with grayscale + CLAHE (Sprint 2.2).
+- Cross-frame OCR deduplicator via rapidfuzz (Sprint 2.2).
+- Scene-change detection (Phase 2.5).
+- ROI-aware on-screen filtering (Phase 3).
+- ASR↔OCR merge engine with `source="BOTH"` tag (Phase 4).
+- SRT/VTT/MD output formatters (Phase 4).

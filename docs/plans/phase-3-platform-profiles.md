@@ -101,3 +101,24 @@ Every spawn prompt MUST include a `## Required Skills` block per `AGENT_TEAM.md`
 - **SRT/VTT/MD formatters + `--format` toggle** — Phase 5.
 - **Batch mode, LLM cleanup, Docker, web UI, diarization, translation** — Phase 5–6.
 - **Platforms beyond TikTok / YouTube / Instagram** — new platforms are contributor PRs.
+
+## Close-out
+
+Phase 3 is **complete**. Shipped via two squash-merged PRs against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 3.1 | #1 | `3d855cc` | Platform profile infra — frozen dataclasses (`PlatformProfile`, `RelativeRect`), TikTok/YouTube/Instagram/Generic profiles, registry with `resolve_profile`, `Platform.GENERIC` enum member, `platform_profile` config validator, `--platform` Typer `click.Choice` flag. Plumbing only; no OCR behavior change. |
+| 3.2 | #2 | `05bbe37` | UI filter — `mask_zones` (pre-OCR), `filter_by_patterns` + `filter_by_frequency` (post-OCR); `ui_filter_enabled` config + `--ui-filter/--no-ui-filter` CLI kill switch; `RapidOCREngine` gained kw-only `profile` param; `resolve_profile` wired in `cli.transcribe`. |
+
+Net test delta at ship: 121 tests at 3.1 → 140 tests at 3.2 end of Phase 3.
+
+Follow-ups explicitly **deferred** out of Phase 3 and not yet scheduled:
+
+- Scene-change detection — **shipped in Phase 2.5 (`894fae2`)** (listed as "potential Phase 2.5" in this plan's Out-of-scope; now closed).
+- YAML profile configs (rejected; revisit on contributor request).
+- Bbox-aware segment filtering (would require `TranscriptSegment` schema change).
+- Per-platform `frequency_threshold` tuning (default 0.95 remains; per-platform overrides trivial to add later).
+- `docs/adding-platforms.md` contributor guide.
+- `omniscribe platforms list / show` CLI subcommands.
+- Twitter/X and Facebook profiles (Phase 6 backlog — contributor PRs welcome).

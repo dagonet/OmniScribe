@@ -53,3 +53,23 @@ Scene-change detection (Phase 2.5 or Phase 3). ROI detection (Phase 3 — owned 
 ### Known Phase 2 limitation (accepted)
 
 `Transcript.language` is always set from faster-whisper's `info.language`. On a silent video where the only signal is OCR, the ASR fallback (typically `"en"`) appears as `Transcript.language` even when on-screen text is in another language. Per-segment `TranscriptSegment.language` is correct. Reconciliation is Phase 4 merge-engine work.
+
+## Close-out
+
+Phase 2 is **complete**. Shipped via two squash-merged PRs against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 2.1 | — | `e9b18c1` | RapidOCR engine swap from PaddleOCR (Windows wheel gap); sparse frame sampler at configurable `ocr_sample_fps`; `RapidOCREngine` lazy-init wrapper; `--ocr` / `--ocr-language` CLI flags and config integration. |
+| 2.2 | — | `ba8dd20` | Grayscale + CLAHE frame preprocessor; cross-frame fuzzy-match deduplicator via rapidfuzz; dedup pipeline integration before merge; all 78 tests passing. |
+
+Net test delta at ship: 78 tests at `ba8dd20` (Phase 1's 38 + Phase 2's 40).
+
+Follow-ups explicitly **deferred** out of Phase 2 and not yet scheduled:
+
+- Scene-change detection (Phase 2.5 — **shipped in Phase 2.5 (`894fae2`)**).
+- ROI detection for on-screen UI elements (Phase 3).
+- Platform-specific UI zone filtering (Phase 3).
+- ASR↔OCR merge engine with `source="BOTH"` tag (Phase 4).
+- SRT/VTT/MD output formatters (Phase 4 in merged PR #5).
+- Batch mode, LLM cleanup via Ollama, Docker deployment (Phase 5+).

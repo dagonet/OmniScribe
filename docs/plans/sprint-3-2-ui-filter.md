@@ -46,3 +46,17 @@ uv run omniscribe transcribe sample.mp4 --ocr --platform generic --output gen.js
 ```
 
 Manual TikTok acceptance is the only GPU-required test; everything else is CPU-only and mocked.
+
+## Close-out
+
+Sprint 3.2 is **complete**. Shipped via one squash-merged PR against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 3.2 | #2 | `05bbe37` | UI filter: `mask_zones` (pre-OCR, defensive copy), `filter_by_patterns` (case-preserving), `filter_by_frequency` (case-folded, pre-dedup). `RapidOCREngine.__init__` gained kw-only `profile` param; `cli.transcribe` calls `resolve_profile` + filter chain when `ui_filter_enabled`. `--ui-filter/--no-ui-filter` kill switch added. 140 tests passing; manual GPU accept on TikTok deferred to user. |
+
+Follow-ups explicitly **deferred** (same as Phase 3 parent):
+
+- Bbox-aware segment filtering (schema change).
+- Per-platform `frequency_threshold` tuning.
+- Twitter/X + Facebook profiles (Phase 6 backlog).

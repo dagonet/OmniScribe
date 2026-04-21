@@ -13,3 +13,14 @@
 > 3. `paddlepaddle-gpu` on PyPI tops at `2.6.2` (CUDA 11.8). 3.x is Paddle-index-only, Linux-only stable.
 >
 > No follow-up action; no blocker to un-block. Sprint 2.1 resumes under the RapidOCR plan.
+
+## Close-out
+
+This pre-flight doc is **superseded** — not shipped as a feature. The underlying pivot (PaddleOCR → RapidOCR) shipped as part of Sprint 2.1 via:
+
+| Context | SHA | Summary |
+|---|---|---|
+| Pivot | `9116bfc` | `docs(phase-2): pivot OCR engine from PaddleOCR to RapidOCR` — docs-only commit capturing the decision. |
+| Sprint 2.1 | `441e70d`..`e9b18c1` | Deps swapped to RapidOCR + `onnxruntime-gpu`; paddlepaddle-gpu / `[gpu]` extra dropped. |
+
+No open follow-ups. Retained only as audit trail for the three empirical probes that motivated the pivot.

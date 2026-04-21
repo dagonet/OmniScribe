@@ -48,3 +48,13 @@ OMNI_PLATFORM_PROFILE=xyz uv run omniscribe transcribe sample.mp4 --ocr
 uv run omniscribe transcribe sample.mp4 --platform tiktok --ocr --output tt.json
   # → byte-identical to Phase 2 `--ocr` output
 ```
+
+## Close-out
+
+Sprint 3.1 is **complete**. Shipped via one squash-merged PR against `main`:
+
+| Sprint | PR | SHA | Summary |
+|---|---|---|---|
+| 3.1 | #1 | `3d855cc` | Platform profile infrastructure: `PlatformProfile` + `RelativeRect` frozen dataclasses, TikTok/YouTube/Instagram/Generic profiles, registry with `resolve_profile`, `Platform.GENERIC` enum, `platform_profile` validator + `ui_filter_enabled` config field, `--platform` Typer `click.Choice` flag. 121 tests passing; zero OCR behavior change (plumbing only). |
+
+No open follow-ups; Sprint 3.2 consumed this infra (see `sprint-3-2-ui-filter.md`).
