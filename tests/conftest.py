@@ -13,6 +13,8 @@ import os
 import wave
 from collections.abc import Iterator
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 # Neutralize Rich's TTY-dependent styling before Typer imports. On GitHub Actions
 # (``CI=true``/``GITHUB_ACTIONS=true``) Rich emits bold/dim escape codes *inside*
@@ -66,3 +68,22 @@ def reset_logging() -> Iterator[None]:
     root.handlers.clear()
     root.handlers.extend(saved_handlers)
     root.level = saved_level
+
+
+@pytest.fixture
+def mock_ollama_client() -> MagicMock:
+    """Pre-shaped mock ``ollama.Client`` instance for LLM-cleanup tests.
+
+    Defaults:
+    - ``list()`` returns a ``SimpleNamespace`` with one model named
+      ``llama3.2:3b`` (the config default); tests that assert model-presence-
+      gate failure override ``.list.return_value``.
+    - ``chat()`` returns the dict shape ollama-python emits:
+      ``{"message": {"content": "cleaned text"}}``.
+
+    Patch at the import site: ``omniscribe.merge.llm_cleanup.Client``.
+    """
+    mock = MagicMock()
+    mock.list.return_value = SimpleNamespace(models=[SimpleNamespace(model="llama3.2:3b")])
+    mock.chat.return_value = {"message": {"content": "cleaned text"}}
+    return mock

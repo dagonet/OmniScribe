@@ -19,6 +19,7 @@ from omniscribe.asr.whisper import WhisperTranscriber
 from omniscribe.audio import extract_audio
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
+from omniscribe.merge.llm_cleanup import cleanup_ocr_segments
 from omniscribe.ocr.deduplicator import dedup_segments
 from omniscribe.ocr.rapid_ocr import RapidOCREngine
 from omniscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
@@ -191,6 +192,14 @@ def transcribe(
             "overrides OMNI_SCENE_CHANGE_ENABLED."
         ),
     ),
+    llm_cleanup: bool | None = typer.Option(
+        None,
+        "--llm-cleanup/--no-llm-cleanup",
+        help=(
+            "Enable Ollama-backed OCR-artefact cleanup on [ON-SCREEN] and [BOTH] "
+            "segments; overrides OMNI_LLM_CLEANUP_ENABLED. Requires: uv sync --extra llm."
+        ),
+    ),
     output_format: str | None = typer.Option(
         None,
         "--format",
@@ -220,6 +229,8 @@ def transcribe(
         config = config.model_copy(update={"ui_filter_enabled": ui_filter})
     if scene_change is not None:
         config = config.model_copy(update={"scene_change_enabled": scene_change})
+    if llm_cleanup is not None:
+        config = config.model_copy(update={"llm_cleanup_enabled": llm_cleanup})
 
     resolved_format = _resolve_output_format(
         flag=output_format,
@@ -274,6 +285,9 @@ def transcribe(
             )
         else:
             segments = speech_segments
+
+        if config.llm_cleanup_enabled:
+            segments = cleanup_ocr_segments(segments, config)
 
         transcript = Transcript(segments=segments, language=detected_language)
         match resolved_format:
