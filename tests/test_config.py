@@ -171,3 +171,52 @@ def test_output_format_invalid_rejects(monkeypatch: pytest.MonkeyPatch, bad: str
 
     with pytest.raises(ValidationError):
         OmniScribeConfig(output_format=bad)  # type: ignore[arg-type]
+
+
+# ── llm_cleanup_* (Sprint 6.1) ─────────────────────────────────────────────
+
+
+def test_llm_cleanup_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sprint 6.1 documented defaults: disabled, llama3.2:3b, localhost, 30s."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.llm_cleanup_enabled is False
+    assert cfg.llm_cleanup_model == "llama3.2:3b"
+    assert cfg.llm_cleanup_host == "http://localhost:11434"
+    assert cfg.llm_cleanup_timeout_s == 30.0
+
+
+@pytest.mark.parametrize("bad", [0.0, -0.1, -30.0])
+def test_llm_cleanup_timeout_non_positive_rejects(
+    monkeypatch: pytest.MonkeyPatch, bad: float
+) -> None:
+    """llm_cleanup_timeout_s must be strictly positive; zero and negatives reject."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        OmniScribeConfig(llm_cleanup_timeout_s=bad)
+
+
+def test_llm_cleanup_timeout_small_positive_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sub-millisecond positive timeout is accepted (lower edge of the validator)."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig(llm_cleanup_timeout_s=0.001)
+
+    assert cfg.llm_cleanup_timeout_s == 0.001
+
+
+def test_llm_cleanup_enabled_env_true_parses(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMNI_LLM_CLEANUP_ENABLED=true round-trips to llm_cleanup_enabled=True."""
+    _strip_omni_env(monkeypatch)
+    monkeypatch.setenv("OMNI_LLM_CLEANUP_ENABLED", "true")
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.llm_cleanup_enabled is True

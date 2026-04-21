@@ -54,6 +54,9 @@ omniscribe transcribe ./video.mp4 --format srt --output transcript.srt
 
 # Markdown digest
 omniscribe transcribe ./video.mp4 --format md --output transcript.md
+
+# LLM-cleaned OCR (opt-in; requires `uv sync --extra llm` + running Ollama)
+omniscribe transcribe ./video.mp4 --ocr --llm-cleanup --output transcript.json
 ```
 
 ## Supported Platforms
@@ -77,6 +80,7 @@ Videos from any other platform work too — just without UI-specific filtering.
 - **GPU-accelerated** — Optimized for NVIDIA GPUs (CUDA), works on CPU too
 - **Multiple output formats** — JSON, TXT, SRT, Markdown
 - **Multilingual** — Supports 80+ languages for both speech and text recognition
+- **LLM OCR cleanup (optional)** — Fix OCR artefacts on screen-text segments via a local Ollama model. Opt-in with `--llm-cleanup`. Requires `uv sync --extra llm` and a running Ollama with the configured model pulled (default `llama3.2:3b`).
 
 ## Requirements
 

@@ -51,6 +51,15 @@ class OmniScribeConfig(BaseSettings):
     scene_change_enabled: bool = True
     scene_change_threshold: float = 0.02
 
+    # ── LLM cleanup ──────────────────────────────────────
+    # Opt-in per-segment OCR-artefact cleanup via a local Ollama model.
+    # Applies to ON-SCREEN and BOTH segments only; SPEECH is untouched (that
+    # is Sprint 6.2's scope). Default disabled — strict opt-in.
+    llm_cleanup_enabled: bool = False
+    llm_cleanup_model: str = "llama3.2:3b"
+    llm_cleanup_host: str = "http://localhost:11434"
+    llm_cleanup_timeout_s: float = 30.0
+
     # ── Platform ─────────────────────────────────────────
     platform_profile: str = "auto"
     ui_filter_enabled: bool = True
@@ -101,6 +110,20 @@ class OmniScribeConfig(BaseSettings):
         """
         if not (0.0 < v <= 1.0):
             raise ValueError(f"scene_change_threshold must be in (0.0, 1.0]; got {v!r}")
+        return v
+
+    @field_validator("llm_cleanup_timeout_s", mode="after")
+    @classmethod
+    def _validate_llm_cleanup_timeout_s(cls, v: float) -> float:
+        """Reject non-positive LLM cleanup timeouts.
+
+        A zero or negative timeout defeats the availability gate — the
+        ``ollama`` client treats ``0`` as "no timeout" on some transports and
+        negative values raise opaque errors far from the config layer. Keep
+        the error message here so misconfiguration fails fast at startup.
+        """
+        if v <= 0:
+            raise ValueError(f"llm_cleanup_timeout_s must be > 0; got {v!r}")
         return v
 
     @field_validator("output_format", mode="before")
