@@ -220,3 +220,38 @@ def test_llm_cleanup_enabled_env_true_parses(monkeypatch: pytest.MonkeyPatch) ->
     cfg = OmniScribeConfig()
 
     assert cfg.llm_cleanup_enabled is True
+
+
+# ── llm_asr_cleanup_enabled (Sprint 6.2) ───────────────────────────────────
+
+
+def test_llm_asr_cleanup_enabled_default_is_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sprint 6.2 — strict opt-in default: ASR cleanup disabled."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.llm_asr_cleanup_enabled is False
+
+
+def test_llm_asr_cleanup_enabled_env_true_parses(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMNI_LLM_ASR_CLEANUP_ENABLED=true round-trips to True."""
+    _strip_omni_env(monkeypatch)
+    monkeypatch.setenv("OMNI_LLM_ASR_CLEANUP_ENABLED", "true")
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.llm_asr_cleanup_enabled is True
+
+
+@pytest.mark.parametrize("truthy", ["true", "True", "TRUE", "1"])
+def test_llm_asr_cleanup_enabled_env_case_insensitive(
+    monkeypatch: pytest.MonkeyPatch, truthy: str
+) -> None:
+    """Pydantic's bool env parser accepts case variants and ``1`` alike."""
+    _strip_omni_env(monkeypatch)
+    monkeypatch.setenv("OMNI_LLM_ASR_CLEANUP_ENABLED", truthy)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.llm_asr_cleanup_enabled is True

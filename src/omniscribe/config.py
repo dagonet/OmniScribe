@@ -53,12 +53,17 @@ class OmniScribeConfig(BaseSettings):
 
     # ── LLM cleanup ──────────────────────────────────────
     # Opt-in per-segment OCR-artefact cleanup via a local Ollama model.
-    # Applies to ON-SCREEN and BOTH segments only; SPEECH is untouched (that
-    # is Sprint 6.2's scope). Default disabled — strict opt-in.
+    # Applies to ON-SCREEN and BOTH segments only; SPEECH is handled by the
+    # Sprint 6.2 ASR cleanup pass below. Default disabled — strict opt-in.
     llm_cleanup_enabled: bool = False
     llm_cleanup_model: str = "llama3.2:3b"
     llm_cleanup_host: str = "http://localhost:11434"
     llm_cleanup_timeout_s: float = 30.0
+    # Sprint 6.2 — opt-in per-segment punctuation + capitalization cleanup on
+    # SPEECH segments. Reuses llm_cleanup_model / _host / _timeout_s; only the
+    # enable flag is separate so users can toggle OCR vs ASR independently.
+    # The env var keeps the OMNI_LLM_CLEANUP_* namespace for discoverability.
+    llm_asr_cleanup_enabled: bool = False
 
     # ── Platform ─────────────────────────────────────────
     platform_profile: str = "auto"
