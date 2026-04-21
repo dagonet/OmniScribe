@@ -19,7 +19,7 @@ from omniscribe.asr.whisper import WhisperTranscriber
 from omniscribe.audio import extract_audio
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
-from omniscribe.merge.llm_cleanup import cleanup_ocr_segments
+from omniscribe.merge.llm_cleanup import cleanup_ocr_segments, cleanup_speech_segments
 from omniscribe.ocr.deduplicator import dedup_segments
 from omniscribe.ocr.rapid_ocr import RapidOCREngine
 from omniscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
@@ -200,6 +200,14 @@ def transcribe(
             "segments; overrides OMNI_LLM_CLEANUP_ENABLED. Requires: uv sync --extra llm."
         ),
     ),
+    asr_cleanup: bool | None = typer.Option(
+        None,
+        "--asr-cleanup/--no-asr-cleanup",
+        help=(
+            "Enable Ollama-backed punctuation + capitalization cleanup on [SPEECH] "
+            "segments; overrides OMNI_LLM_ASR_CLEANUP_ENABLED. Requires: uv sync --extra llm."
+        ),
+    ),
     output_format: str | None = typer.Option(
         None,
         "--format",
@@ -231,6 +239,8 @@ def transcribe(
         config = config.model_copy(update={"scene_change_enabled": scene_change})
     if llm_cleanup is not None:
         config = config.model_copy(update={"llm_cleanup_enabled": llm_cleanup})
+    if asr_cleanup is not None:
+        config = config.model_copy(update={"llm_asr_cleanup_enabled": asr_cleanup})
 
     resolved_format = _resolve_output_format(
         flag=output_format,
@@ -288,6 +298,8 @@ def transcribe(
 
         if config.llm_cleanup_enabled:
             segments = cleanup_ocr_segments(segments, config)
+        if config.llm_asr_cleanup_enabled:
+            segments = cleanup_speech_segments(segments, config)
 
         transcript = Transcript(segments=segments, language=detected_language)
         match resolved_format:

@@ -17,7 +17,7 @@ import pytest
 
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
-from omniscribe.merge.llm_cleanup import cleanup_ocr_segments
+from omniscribe.merge.llm_cleanup import cleanup_ocr_segments, cleanup_speech_segments
 from omniscribe.output import TranscriptSegment
 
 
@@ -274,6 +274,183 @@ def test_integration_live_ollama_smoke() -> None:  # pragma: no cover
     cfg = OmniScribeConfig(llm_cleanup_enabled=True)
     segments = [_seg("ON-SCREEN", "heIIo w0rId")]
     result = cleanup_ocr_segments(segments, cfg)
+
+    assert len(result) == 1
+    assert result[0].text.strip() != ""
+
+
+# ── Sprint 6.2: cleanup_speech_segments ───────────────────────────────────
+
+
+def _asr_cfg() -> OmniScribeConfig:
+    """Config with ASR cleanup enabled."""
+    return OmniScribeConfig(llm_asr_cleanup_enabled=True)
+
+
+def test_speech_segment_is_cleaned(mock_ollama_client: MagicMock) -> None:
+    """SPEECH segment → chat called → text replaced with punctuated output."""
+    segments = [_seg("SPEECH", "hello world")]
+    mock_ollama_client.chat.return_value = {"message": {"content": "Hello, world."}}
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        result = cleanup_speech_segments(segments, _asr_cfg())
+
+    assert len(result) == 1
+    assert result[0].text == "Hello, world."
+    assert result[0].source == "SPEECH"
+    mock_ollama_client.chat.assert_called_once()
+
+
+def test_asr_mixed_batch_counts_and_passthrough(
+    mock_ollama_client: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """[SPEECH, ON-SCREEN, BOTH, SPEECH] → exactly 2 chat calls + INFO summary.
+
+    Also proves ON-SCREEN + BOTH passthrough (strict SPEECH-only gate — ``BOTH``
+    is claimed by :func:`cleanup_ocr_segments`).
+    """
+    segments = [
+        _seg("SPEECH", "alpha", 0.0, 1.0),
+        _seg("ON-SCREEN", "bravo", 1.0, 2.0),
+        _seg("BOTH", "charlie", 2.0, 3.0),
+        _seg("SPEECH", "delta", 3.0, 4.0),
+    ]
+    mock_ollama_client.chat.return_value = {"message": {"content": "CLEAN"}}
+    with (
+        caplog.at_level(logging.INFO, logger="omniscribe.merge.llm_cleanup"),
+        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+    ):
+        result = cleanup_speech_segments(segments, _asr_cfg())
+
+    assert mock_ollama_client.chat.call_count == 2
+    assert "LLM ASR cleanup: 2 target segments processed (of 4 total), 2 modified" in caplog.text
+    # ON-SCREEN + BOTH byte-identical passthrough.
+    assert result[1].text == "bravo"
+    assert result[1].source == "ON-SCREEN"
+    assert result[2].text == "charlie"
+    assert result[2].source == "BOTH"
+
+
+def test_asr_length_rail_rejects_hallucinated_response(
+    mock_ollama_client: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Response longer than input x 2.0 keeps the original and logs WARNING."""
+    original = "short"
+    mock_ollama_client.chat.return_value = {"message": {"content": "x" * 11}}
+    segments = [_seg("SPEECH", original)]
+    with (
+        caplog.at_level(logging.WARNING, logger="omniscribe.merge.llm_cleanup"),
+        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+    ):
+        result = cleanup_speech_segments(segments, _asr_cfg())
+
+    assert result[0].text == original
+    assert "exceeds" in caplog.text
+    assert "LLM ASR cleanup" in caplog.text
+
+
+def test_asr_empty_response_keeps_original(
+    mock_ollama_client: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Whitespace-only response → original preserved, WARNING logged."""
+    mock_ollama_client.chat.return_value = {"message": {"content": "   \n\t  "}}
+    segments = [_seg("SPEECH", "keep me")]
+    with (
+        caplog.at_level(logging.WARNING, logger="omniscribe.merge.llm_cleanup"),
+        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+    ):
+        result = cleanup_speech_segments(segments, _asr_cfg())
+
+    assert result[0].text == "keep me"
+    assert "empty response" in caplog.text
+    assert "LLM ASR cleanup" in caplog.text
+
+
+def test_asr_no_op_short_circuit_on_on_screen_only(
+    mock_ollama_client: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    """ON-SCREEN-only input must NOT call Ollama; INFO log fires."""
+    segments = [_seg("ON-SCREEN", "overlay one"), _seg("BOTH", "overlay two", 1.0, 2.0)]
+    with (
+        caplog.at_level(logging.INFO, logger="omniscribe.merge.llm_cleanup"),
+        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+    ):
+        result = cleanup_speech_segments(segments, _asr_cfg())
+
+    # Identity returned on the no-op path, and chat was never called.
+    assert result is segments
+    mock_ollama_client.chat.assert_not_called()
+    assert "LLM ASR cleanup: no target-source segments" in caplog.text
+
+
+def test_asr_missing_ollama_raises_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Client unset (extras missing) raises OmniScribeError pointing at install cmd."""
+    monkeypatch.setattr("omniscribe.merge.llm_cleanup.Client", None)
+    segments = [_seg("SPEECH", "text")]
+    with pytest.raises(OmniScribeError) as exc:
+        cleanup_speech_segments(segments, _asr_cfg())
+
+    assert "uv sync --extra llm" in str(exc.value)
+
+
+# ── Sprint 6.2: cross-function invariant ───────────────────────────────────
+
+
+def test_sequential_cleanup_respects_disjoint_targets(mock_ollama_client: MagicMock) -> None:
+    """Running OCR cleanup then ASR cleanup on a mixed batch:
+
+    - each segment is modified at most once (target sources are disjoint);
+    - no segment's ``source`` field is ever mutated.
+    """
+    segments = [
+        _seg("SPEECH", "alpha", 0.0, 1.0),
+        _seg("ON-SCREEN", "bravo", 1.0, 2.0),
+        _seg("BOTH", "charlie", 2.0, 3.0),
+        _seg("SPEECH", "delta", 3.0, 4.0),
+    ]
+
+    # Echo-back prefix so we can detect which cleanup fired on each segment.
+    # OCR prompt fires on ON-SCREEN + BOTH; ASR prompt fires on SPEECH.
+    def _chat_side_effect(*, model, messages, options):  # type: ignore[no-untyped-def]
+        content = messages[0]["content"]
+        # Each prompt template ends with ``TEXT: {text}``.
+        text = content.split("TEXT: ", 1)[1]
+        # The OCR prompt is the one that talks about fixing OCR errors; the ASR
+        # prompt opens with ``Add or correct punctuation and capitalization``.
+        if content.startswith("Fix only OCR errors"):
+            return {"message": {"content": f"OCR[{text}]"}}
+        return {"message": {"content": f"ASR[{text}]"}}
+
+    mock_ollama_client.chat.side_effect = _chat_side_effect
+    cfg = OmniScribeConfig(llm_cleanup_enabled=True, llm_asr_cleanup_enabled=True)
+
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        step1 = cleanup_ocr_segments(segments, cfg)
+        step2 = cleanup_speech_segments(step1, cfg)
+
+    # Sources preserved end-to-end.
+    assert [s.source for s in step2] == ["SPEECH", "ON-SCREEN", "BOTH", "SPEECH"]
+
+    # Each segment visited by exactly one prompt; never both.
+    assert step2[0].text == "ASR[alpha]"
+    assert step2[1].text == "OCR[bravo]"
+    assert step2[2].text == "OCR[charlie]"
+    assert step2[3].text == "ASR[delta]"
+    # No segment text carries both prefixes.
+    for seg in step2:
+        assert not (seg.text.startswith("ASR[") and "OCR[" in seg.text)
+        assert not (seg.text.startswith("OCR[") and "ASR[" in seg.text)
+
+
+@pytest.mark.integration
+def test_integration_asr_live_ollama_smoke() -> None:  # pragma: no cover
+    """Real Ollama + real llama3.2:3b on an unpunctuated SPEECH fixture.
+
+    Skipped by default; run with `uv run pytest -m integration`. Requires a
+    running local Ollama with `llama3.2:3b` pulled.
+    """
+    cfg = OmniScribeConfig(llm_asr_cleanup_enabled=True)
+    segments = [_seg("SPEECH", "hello world how are you today")]
+    result = cleanup_speech_segments(segments, cfg)
 
     assert len(result) == 1
     assert result[0].text.strip() != ""
