@@ -5,7 +5,7 @@
 # Session Bootstrap (MANDATORY)
 
 At the start of every session:
-1. Read `AGENT_TEAM.md` — assume the **PO role** per Session Initialization
+1. Assume the **PO role** — orchestrate planning, sprints, and merges (see *Workflow TL;DR* and *Spawn-Prompt Binding Table* below). Do **NOT** `Read AGENT_TEAM.md` up front (850+ lines). Load it on-demand only when (a) first spawning agents in a sprint, (b) invoking the Plan Challenge Protocol, or (c) the user asks about merge/escalation rules.
 2. Read `PROJECT_CONTEXT.md` — load build commands and workflow config
 3. **Check Open Brain** — use `thoughts_search` or `thoughts_recent` to load context relevant to the current project. Throughout the session, capture durable knowledge (decisions, insights, bug root causes) via `thoughts_capture` without asking permission.
 4. Present current state (from MEMORY.md) and ask what to work on
@@ -40,7 +40,22 @@ Claude operates as **Product Owner (PO)** — the orchestrator who plans sprints
 
 **Escalation:** After 3 failed fix cycles on one task, the PO pauses the workstream and chooses: (a) reduce scope, (b) re-spawn architect with failure context, or (c) escalate to the user. See Escalation Protocol in `AGENT_TEAM.md`.
 
-Full details: `AGENT_TEAM.md` (roles, rules, merge protocol, mode behavior table)
+Full details: `AGENT_TEAM.md` (roles, rules, merge protocol, mode behavior table) — load on-demand per Bootstrap step 1.
+
+## Spawn-Prompt Binding Table
+
+When spawning agents, include a `## Required Skills` block in the spawn prompt. Spawns without it are blocked for bound subagent types by `hooks/require-skills-block.sh` (PreToolUse on `Task`).
+
+| subagent_type | Required Skills |
+|---|---|
+| `coder` / variant coders (`dotnet-coder`, `rust-coder`, `java-coder`, `python-coder`) | `karpathy-guidelines`, `superpowers:test-driven-development`, `superpowers:verification-before-completion`, `superpowers:receiving-code-review` |
+| `tester` | `superpowers:systematic-debugging`, `superpowers:verification-before-completion` |
+| `test-writer` | `superpowers:test-driven-development` |
+| `architect` | `superpowers:writing-plans` |
+| `requirements-engineer` | `superpowers:brainstorming` |
+| `code-reviewer` / `doc-generator` | *(none — omit the block; hook passes them through)* |
+
+Full copy-paste snippets + rationale: `AGENT_TEAM.md` → *Spawn-Prompt Binding Table* (load on-demand).
 
 ## Open Brain Context for Agents
 
@@ -85,7 +100,7 @@ Requires the [superpowers plugin](https://github.com/anthropics/claude-plugins-o
 | User describes a new feature or design idea | `superpowers:brainstorming` |
 | Design is accepted, need to break into tasks | `superpowers:writing-plans` |
 | Plan approved, starting implementation | `superpowers:executing-plans` |
-| Writing any new code (feature or fix) | `superpowers:test-driven-development` |
+| Writing any new code (feature or fix) | `karpathy-guidelines` + `superpowers:test-driven-development` |
 | User reports a bug, test failure, or unexpected behavior | `superpowers:systematic-debugging` |
 | Before claiming work complete or opening a PR | `superpowers:verification-before-completion` |
 | Requesting review from the code-reviewer agent | `superpowers:requesting-code-review` |
