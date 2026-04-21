@@ -1,4 +1,4 @@
-"""Unit tests for :mod:`omniscribe.merge.llm_cleanup` (Sprint 6.1).
+"""Unit tests for :mod:`omniscribe.merge.llm_cleanup` (Sprints 6.1 + 6.2).
 
 Patch targets live at the import site (``omniscribe.merge.llm_cleanup.Client``,
 not ``ollama.Client``) so the bound name inside the module under test is
@@ -390,6 +390,45 @@ def test_asr_missing_ollama_raises_actionable_error(monkeypatch: pytest.MonkeyPa
         cleanup_speech_segments(segments, _asr_cfg())
 
     assert "uv sync --extra llm" in str(exc.value)
+
+
+def test_asr_availability_gate_connection_error_raises_omniscribe_error(
+    mock_ollama_client: MagicMock,
+) -> None:
+    """client.list raises ConnectionError → OmniScribeError pointing at --no-asr-cleanup."""
+    mock_ollama_client.list.side_effect = ConnectionError("refused")
+    segments = [_seg("SPEECH", "text")]
+    cfg = _asr_cfg()
+    with (
+        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        pytest.raises(OmniScribeError) as exc,
+    ):
+        cleanup_speech_segments(segments, cfg)
+
+    msg = str(exc.value)
+    assert "not reachable" in msg
+    assert cfg.llm_cleanup_host in msg
+    assert "--no-asr-cleanup" in msg
+    assert "refused" in msg
+
+
+def test_asr_model_presence_gate_missing_model_raises(
+    mock_ollama_client: MagicMock,
+) -> None:
+    """client.list returns a response without the configured model → OmniScribeError."""
+    mock_ollama_client.list.return_value = SimpleNamespace(
+        models=[SimpleNamespace(model="some-other-model:7b")]
+    )
+    segments = [_seg("SPEECH", "text")]
+    with (
+        patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client),
+        pytest.raises(OmniScribeError) as exc,
+    ):
+        cleanup_speech_segments(segments, _asr_cfg())
+
+    msg = str(exc.value)
+    assert "not pulled" in msg
+    assert "ollama pull llama3.2:3b" in msg
 
 
 # ── Sprint 6.2: cross-function invariant ───────────────────────────────────
