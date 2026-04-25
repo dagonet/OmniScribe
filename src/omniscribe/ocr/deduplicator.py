@@ -33,7 +33,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import TYPE_CHECKING
 
-from rapidfuzz import fuzz
+from omniscribe.ocr._text_match import _canonical_key, _fuzzy_match
 
 if TYPE_CHECKING:
     from omniscribe.output import TranscriptSegment
@@ -72,11 +72,6 @@ def _flush_cluster(
         confidence=mean_conf,
         language=first.language,
     )
-
-
-def _canonical_key(text: str) -> str:
-    """Bucket key for ON-SCREEN grouping: case-folded, edge-stripped."""
-    return text.casefold().strip()
 
 
 def dedup_segments(
@@ -149,9 +144,8 @@ def dedup_segments(
                 cluster.append(seg)
                 continue
             tail = cluster[-1]
-            similarity = fuzz.ratio(seg.text, tail.text, processor=str.lower) / 100.0
             gap = seg.start - tail.end
-            if similarity >= threshold and gap <= gap_tolerance:
+            if _fuzzy_match(seg.text, tail.text, threshold) and gap <= gap_tolerance:
                 cluster.append(seg)
             else:
                 flushed = _flush_cluster(cluster, min_duration)
