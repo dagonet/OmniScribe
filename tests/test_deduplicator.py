@@ -156,3 +156,69 @@ def test_gap_tolerance_breaks_cluster_when_exceeded() -> None:
     assert len(result) == 2
     assert [s.start for s in result] == [0.0, 5.0]
     assert [s.end for s in result] == [0.0, 5.0]
+
+
+def test_dedup_clusters_non_consecutive_same_text_across_frames() -> None:
+    """Sprint OCR-Recall Part 2 — the multi-region-per-frame regression case.
+
+    Each sampled frame produces multiple text regions (e.g. top pill, mid pill,
+    bottom caption). In time-ordered receipt order, same-text occurrences are
+    NOT consecutive — they are interleaved with sibling regions from the same
+    frame. The pre-fix single-pass walk emitted 6 point segments here because
+    text-mismatches broke the cluster on every step. Post-fix: the partition
+    + group-by-canonical-text pass yields 3 multi-second clusters.
+    """
+    segments = [
+        _on_screen(12.0, "TOP_PILL"),
+        _on_screen(12.0, "MID_PILL"),
+        _on_screen(12.0, "BOTTOM"),
+        _on_screen(13.0, "TOP_PILL"),
+        _on_screen(13.0, "MID_PILL"),
+        _on_screen(13.0, "BOTTOM"),
+    ]
+    result = dedup_segments(segments, threshold=0.85, min_duration=0.0, gap_tolerance=GAP_1FPS)
+
+    assert len(result) == 3
+    by_text = {s.text: s for s in result}
+    assert set(by_text) == {"TOP_PILL", "MID_PILL", "BOTTOM"}
+    for seg in result:
+        assert seg.start == 12.0
+        assert seg.end == 13.0
+        assert seg.source == "ON-SCREEN"
+
+
+def test_dedup_groups_by_canonical_text_case_folded() -> None:
+    """Case-folded canonical key clusters case-variants of the same text.
+
+    Mirrors the merge_channels case-folding fix from the prior sprint: even if
+    OCR varies between upper- and lower-case across frames, a single overlay
+    must still resolve to one cluster.
+    """
+    segments = [
+        _on_screen(12.0, "KEINE"),
+        _on_screen(13.0, "keine"),
+    ]
+    result = dedup_segments(segments, threshold=0.85, min_duration=0.0, gap_tolerance=GAP_1FPS)
+
+    assert len(result) == 1
+    assert result[0].start == 12.0
+    assert result[0].end == 13.0
+    assert result[0].source == "ON-SCREEN"
+
+
+def test_dedup_far_apart_identical_text_does_not_overcluster() -> None:
+    """Grouping by text must not bypass the within-group gap-tolerance check.
+
+    Two identical strings 40 seconds apart with gap_tolerance=2.0 must remain
+    two separate clusters — the group-by-text optimisation cannot smuggle
+    far-apart occurrences past the time-gap guard.
+    """
+    segments = [
+        _on_screen(10.0, "X"),
+        _on_screen(50.0, "X"),
+    ]
+    result = dedup_segments(segments, threshold=0.85, min_duration=0.0, gap_tolerance=GAP_1FPS)
+
+    assert len(result) == 2
+    assert [s.start for s in result] == [10.0, 50.0]
+    assert [s.end for s in result] == [10.0, 50.0]
