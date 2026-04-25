@@ -17,6 +17,14 @@ INSTAGRAM_PROFILE = PlatformProfile(
         RelativeRect(x=0.86, y=0.20, w=0.14, h=0.70),
         RelativeRect(x=0.0, y=0.85, w=1.0, h=0.15),
         RelativeRect(x=0.0, y=0.0, w=1.0, h=0.06),
+        # Auto-caption band (best-effort default based on platform UI
+        # conventions; user to refine after manual GPU smoke per
+        # docs/plans/sprint-7-1-ocr-noise-floor.md). Instagram Reels
+        # auto-captions render slightly higher than TikTok's, roughly
+        # y in [0.50, 0.75]. x is capped at 0.86 to avoid layering with
+        # the right-rail rect above (mask_zones handles overlap fine,
+        # but keeping zones disjoint makes the intent clearer).
+        RelativeRect(x=0.05, y=0.50, w=0.81, h=0.25),
     ),
     ui_text_patterns=(
         re.compile(r"^Original audio\b.*", re.IGNORECASE),

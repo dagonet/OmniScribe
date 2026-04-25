@@ -8,6 +8,7 @@ import pytest
 
 from omniscribe.platforms import (
     GENERIC_PROFILE,
+    INSTAGRAM_PROFILE,
     TIKTOK_PROFILE,
     PlatformProfile,
     RelativeRect,
@@ -83,3 +84,30 @@ class TestPlatformProfile:
         profile = PlatformProfile(name="test")
         assert isinstance(profile.ui_exclusion_zones, tuple)
         assert isinstance(profile.ui_text_patterns, tuple)
+
+
+class TestCaptionBandZones:
+    """Sprint 7.1: caption-band rect must exist on TikTok + Instagram.
+
+    Mid-band band is defined as ``0.40 <= y_min < y_max <= 0.85`` —
+    looser than the documented best-effort defaults (TikTok 0.55-0.78,
+    Instagram 0.50-0.75) so the assertion survives a future tightening
+    of the rect after manual GPU smoke. The asserted coverage is purely
+    "a caption-band rect was added", not "its coordinates are exactly
+    these" — coordinate refinement is a future user task.
+    """
+
+    @staticmethod
+    def _has_caption_band_rect(profile: PlatformProfile) -> bool:
+        for rect in profile.ui_exclusion_zones:
+            y_min = rect.y
+            y_max = rect.y + rect.h
+            if 0.40 <= y_min < y_max <= 0.85:
+                return True
+        return False
+
+    def test_tiktok_profile_has_caption_band_rect(self) -> None:
+        assert self._has_caption_band_rect(TIKTOK_PROFILE)
+
+    def test_instagram_profile_has_caption_band_rect(self) -> None:
+        assert self._has_caption_band_rect(INSTAGRAM_PROFILE)
