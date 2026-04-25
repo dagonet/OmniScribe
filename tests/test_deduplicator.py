@@ -127,6 +127,24 @@ def test_interleaved_speech_and_on_screen_preserves_input_order() -> None:
     assert other.end == 4.0
 
 
+def test_dedup_keeps_single_frame_caption() -> None:
+    """Sprint OCR-Recall — a single-frame caption survives at ``min_duration=0.0``.
+
+    Guards against accidentally re-introducing a positive ``min_duration``
+    floor: the new aggregator emits one segment per detected line per frame,
+    and a sub-second caption that only spans one sampled frame must still
+    reach output. The 0.5s floor (pre-aggregation default) would have
+    silently dropped this case.
+    """
+    seg = _on_screen(1.0, "KEINE KAMPFSPORTTECHNIK KEINE", 0.9)
+    result = dedup_segments([seg], threshold=0.85, min_duration=0.0, gap_tolerance=GAP_1FPS)
+
+    assert len(result) == 1
+    assert result[0].text == "KEINE KAMPFSPORTTECHNIK KEINE"
+    assert result[0].start == 1.0
+    assert result[0].end == 1.0
+
+
 def test_gap_tolerance_breaks_cluster_when_exceeded() -> None:
     """Identical text but separated by a gap > 2 * 1/fps -> two clusters."""
     segments = [

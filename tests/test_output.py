@@ -303,6 +303,63 @@ def test_merge_channels_tie_break_earliest_start_wins() -> None:
     assert on_screen[0].start == 8.0
 
 
+def test_merge_channels_german_caption_emits_both() -> None:
+    """Sprint OCR-Recall — case-insensitive token-set match across German speech and OCR.
+
+    Codifies the canonical case the v0.1.0 smoke run failed on: a SPEECH
+    segment ``"Keine Kampfsporttechnik, keine Gewalt, ..."`` overlapping an
+    aggregated OCR caption ``"KEINE KAMPFSPORTTECHNIK KEINE"`` must emit
+    one ``BOTH`` segment via ``rapidfuzz.fuzz.WRatio`` (whose token-set
+    component handles the case + length asymmetry).
+    """
+    speech = [
+        _speech(
+            0.0,
+            5.0,
+            "Keine Kampfsporttechnik, keine Gewalt, sondern nur ein Wort und hier ist es",
+        )
+    ]
+    ocr = [_ocr(1.0, 3.0, "KEINE KAMPFSPORTTECHNIK KEINE")]
+
+    merged = merge_channels(speech, ocr, threshold=_T)
+
+    both = [s for s in merged if s.source == "BOTH"]
+    assert len(both) == 1
+
+
+def test_merge_channels_point_ocr_on_speech_end_no_both() -> None:
+    """Risk-6 — strict-``<`` boundary semantics: point OCR landing exactly on
+    ``speech.end`` does NOT emit BOTH.
+
+    With 1fps OCR sampling and seconds-resolution Whisper boundaries,
+    boundary collisions are not rare. This test locks the current
+    strict-``<`` contract; loosening to ``<=`` would be a deliberate,
+    tested change rather than accidental drift.
+    """
+    speech = [_speech(0.0, 5.0, "hello world")]
+    ocr = [_ocr(5.0, 5.0, "hello world")]  # point OCR at speech.end
+
+    merged = merge_channels(speech, ocr, threshold=_T)
+
+    assert "BOTH" not in {s.source for s in merged}
+
+
+def test_merge_channels_point_ocr_just_inside_speech_end_emits_both() -> None:
+    """Risk-6 partner — point OCR a hair inside ``speech.end`` DOES emit BOTH.
+
+    Companion to ``test_merge_channels_point_ocr_on_speech_end_no_both``:
+    confirms the boundary is exactly at ``speech.end``, not earlier — a
+    point at ``speech.end - epsilon`` collapses correctly.
+    """
+    speech = [_speech(0.0, 5.0, "hello world")]
+    ocr = [_ocr(4.99, 4.99, "hello world")]
+
+    merged = merge_channels(speech, ocr, threshold=_T)
+
+    both = [s for s in merged if s.source == "BOTH"]
+    assert len(both) == 1
+
+
 def test_merge_channels_each_ocr_consumed_at_most_once() -> None:
     # Two speech segments both overlap and match one OCR segment — only the
     # first speech consumes it; the second must emit as bare SPEECH.

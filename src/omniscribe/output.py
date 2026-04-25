@@ -263,7 +263,12 @@ def merge_channels(
                 continue
             if not _overlaps(sp, oc):
                 continue
-            score = fuzz.WRatio(sp.text, oc.text)
+            # ``processor=str.lower`` makes the comparison case-insensitive.
+            # On-screen captions arrive uppercased (e.g. ``KEINE KAMPFSPORTTECHNIK``)
+            # while ASR speech is mixed-case; without case folding ``WRatio``
+            # scores the canonical pair near 15 instead of ~87 (Sprint OCR-Recall
+            # Risk-2 finding).
+            score = fuzz.WRatio(sp.text, oc.text, processor=str.lower)
             if score < score_cutoff:
                 continue
             # Highest score wins; ties → earliest ocr.start. ``best_start`` is
