@@ -8,16 +8,20 @@ Three independent helpers make up the Sprint 3.2 UI-filter stage:
 * :func:`filter_by_patterns` — drop ON-SCREEN segments whose text matches
   any compiled regex. SPEECH segments pass through untouched.
 * :func:`filter_by_frequency` — drop ON-SCREEN segments whose normalised text
-  appears in at least ``threshold`` of sampled frames. SPEECH segments pass
+  appears in at least ``threshold`` of sampled frames, with a fuzzy
+  near-duplicate clustering pass to catch the ``"SUBSCRIBE!"`` /
+  ``"Subscribe →"`` / ``"SUBSCRIBE"`` family. SPEECH segments pass
   through. ``frame_count == 0`` short-circuits to the input unchanged.
 
 Normalisation divergence (intentional)
 --------------------------------------
 ``filter_by_patterns`` preserves case — regex authors opt into case
 insensitivity via ``re.IGNORECASE``. ``filter_by_frequency`` case-folds
-internally via ``seg.text.strip().lower()`` because UI chrome often flickers
-between ``"SUBSCRIBE"`` and ``"Subscribe"`` across frames and the ratio
-calculation would otherwise miss those counts.
+internally via :func:`omniscribe.ocr._text_match._canonical_key` because
+UI chrome often flickers between ``"SUBSCRIBE"`` and ``"Subscribe"``
+across frames and the ratio calculation would otherwise miss those
+counts. The same helper is reused by the deduplicator so the two
+stages cannot drift on case-folding semantics.
 
 Ordering (binding)
 ------------------
@@ -34,6 +38,8 @@ from collections import Counter
 from typing import TYPE_CHECKING
 
 import cv2
+
+from omniscribe.ocr._text_match import _canonical_key, _fuzzy_match
 
 if TYPE_CHECKING:
     import re
@@ -103,28 +109,97 @@ def filter_by_frequency(
     segments: list[TranscriptSegment],
     frame_count: int,
     threshold: float,
+    *,
+    fuzzy_threshold: float = 90.0,
 ) -> list[TranscriptSegment]:
     """Drop ON-SCREEN segments whose normalised text appears in too many frames.
 
-    Normalisation is ``seg.text.strip().lower()`` (see module docstring for
-    why this diverges from :func:`filter_by_patterns`). A segment is dropped
-    when its occurrence count divided by ``frame_count`` is greater than or
-    equal to ``threshold``. SPEECH segments pass through untouched.
-    ``frame_count == 0`` returns the input unchanged — the ratio is
-    undefined and we must not divide by zero.
+    Normalisation uses :func:`omniscribe.ocr._text_match._canonical_key`
+    (case-folded, edge-stripped) so that variations like ``"SUBSCRIBE"``
+    and ``"Subscribe"`` share a bucket. Beyond exact-key buckets, a second
+    pass clusters near-duplicate keys (e.g. ``"SUBSCRIBE!"`` /
+    ``"Subscribe →"`` / ``"SUBSCRIBE"``) using a greedy single-link walk
+    against :func:`omniscribe.ocr._text_match._fuzzy_match` — a key joins
+    an existing cluster if it matches *any* member of that cluster at
+    ``fuzzy_threshold`` (in 0-100, the rapidfuzz ``fuzz.ratio`` scale).
+
+    A segment is dropped when its **cluster's** combined occurrence count
+    divided by ``frame_count`` is greater than or equal to ``threshold``.
+    The fuzzy clustering raises the *effective* recurrence count for any
+    canonical text — see the "Behavior-change risk" section in
+    ``docs/plans/sprint-7-1-ocr-noise-floor.md``.
+
+    SPEECH segments pass through untouched. ``frame_count == 0`` returns
+    the input unchanged — the ratio is undefined and we must not divide
+    by zero.
+
+    Parameters
+    ----------
+    segments:
+        Mixed input list. SPEECH segments bypass filtering.
+    frame_count:
+        Total number of sampled frames the OCR ran over. Denominator
+        for the recurrence ratio.
+    threshold:
+        Drop boundary (``[0.0, 1.0]``). A cluster is dropped when
+        ``cluster_count / frame_count >= threshold``.
+    fuzzy_threshold:
+        Minimum ``fuzz.ratio`` (0-100) for two canonical keys to share a
+        cluster. Default 90.0 — tight enough to keep legitimate captions
+        apart, loose enough to collapse common SUBSCRIBE / handle / arrow
+        variants.
     """
     if frame_count == 0:
         return list(segments)
+
+    # Build per-canonical-key counts first (cheap exact-match pass).
     counts: Counter[str] = Counter(
-        seg.text.strip().lower() for seg in segments if seg.source == "ON-SCREEN"
+        _canonical_key(seg.text) for seg in segments if seg.source == "ON-SCREEN"
     )
+
+    # Greedy single-link clustering over the unique non-empty keys.
+    # Iteration order is the input-Counter order (deterministic in
+    # CPython 3.7+). For each key, walk existing clusters and join the
+    # first whose any member matches; otherwise start a new cluster.
+    fuzzy_ratio = fuzzy_threshold / 100.0
+    clusters: list[list[str]] = []
+    for key in counts:
+        if not key:
+            # Empty canonical keys cannot meaningfully cluster — drop
+            # them out of the cluster set; the lookup loop below treats
+            # them as their own (zero-count) bucket so behavior matches
+            # the pre-existing exact-match pass.
+            continue
+        joined = False
+        for cluster in clusters:
+            if any(_fuzzy_match(key, member, fuzzy_ratio) for member in cluster):
+                cluster.append(key)
+                joined = True
+                break
+        if not joined:
+            clusters.append([key])
+
+    # Map each key to its cluster's combined count.
+    cluster_counts: dict[str, int] = {}
+    for cluster in clusters:
+        total = sum(counts[member] for member in cluster)
+        for member in cluster:
+            cluster_counts[member] = total
+
     kept: list[TranscriptSegment] = []
     for seg in segments:
         if seg.source != "ON-SCREEN":
             kept.append(seg)
             continue
-        key = seg.text.strip().lower()
-        if counts[key] / frame_count >= threshold:
+        key = _canonical_key(seg.text)
+        # Empty canonical keys are absent from ``cluster_counts`` (they
+        # cannot meaningfully cluster — see the ``if not key`` guard in
+        # the clustering loop). Fall back to the raw exact-match count,
+        # which matches the pre-fuzzy behavior for whitespace-only OCR
+        # noise: drop only when its raw recurrence already clears
+        # ``threshold``.
+        cluster_count = cluster_counts.get(key, counts[key])
+        if cluster_count / frame_count >= threshold:
             continue
         kept.append(seg)
     return kept

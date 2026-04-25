@@ -18,6 +18,11 @@ TIKTOK_PROFILE = PlatformProfile(
         RelativeRect(x=0.85, y=0.0, w=0.15, h=1.0),
         RelativeRect(x=0.0, y=0.88, w=1.0, h=0.12),
         RelativeRect(x=0.0, y=0.0, w=1.0, h=0.05),
+        # Auto-caption band (best-effort default based on platform UI
+        # conventions; user to refine after manual GPU smoke per
+        # docs/plans/sprint-7-1-ocr-noise-floor.md). TikTok auto-rolling
+        # captions render mid-lower screen at roughly y in [0.55, 0.78].
+        RelativeRect(x=0.05, y=0.55, w=0.90, h=0.23),
     ),
     ui_text_patterns=(
         re.compile(r"^@[\w.]+$"),
