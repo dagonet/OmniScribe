@@ -152,4 +152,33 @@ See "Cut" list above. Summary: no per-platform fuzzy thresholds, no CLI flag for
 
 ## Close-out
 
-(append post-merge: PR number, squash commit SHA, final test count, any drift between plan and implementation)
+**Merged 2026-04-25** as PR [#20](https://github.com/dagonet/OmniScribe/pull/20), squash commit `e447cbf`. Five commits collapsed: `99f45fe` (plan), `4c8a045` (lift `_text_match`), `2495ae4` (fuzzy filter), `2d4e1dc` (caption-band rects), `472836b` (empty-key fallback comment from review feedback).
+
+**Final test count:** 317 passed, 2 deselected (296 baseline + 21 new — 16 in `test_text_match.py`, 3 fuzzy + 1 mask-pixel-integration in `test_ui_filter.py`, 2 zone-assertion in `test_platform_profiles.py`). Plan estimated +6; the dev shipped substantially more coverage. ruff format/check clean.
+
+**Deviations from plan:**
+
+1. **Caption-band coordinates are best-effort defaults, not measured from real frames.** Plan §"How to set the caption-band coordinates" called for sampling 2–3 representative frames per platform. The python-coder agent had no local video access; the PO authorized documented platform-UI-convention defaults (TikTok `(x=0.05, y=0.55, w=0.90, h=0.23)`; Instagram `(x=0.05, y=0.50, w=0.81, h=0.25)` — x capped at 0.86 to stay disjoint from the right-rail rect). Both rects carry inline comments deferring refinement to post-merge GPU smoke. Acceptance criterion #7 was technically violated but the PR explicitly acknowledged this as a known follow-up.
+
+2. **Positive fuzzy test triple was changed** from the plan's `["SUBSCRIBE!", "Subscribe →", "SUBSCRIBE"]` to `["SUBSCRIBE!", "Subscribe.", "SUBSCRIBE"]`. Reason: pairwise `rapidfuzz.fuzz.ratio("SUBSCRIBE!", "Subscribe →", processor=str.lower) = 85.7` falls below the default `fuzzy_threshold=90`, so greedy single-link clustering produces two clusters from the original triple, not one. Replacement triple has all-pairs ≥ 90 (`SUBSCRIBE!`/`Subscribe.` = 90.0 exact-boundary; both vs `SUBSCRIBE` = 94.7), keeping the test deterministic. Comment in the test explains the math.
+
+3. **`_text_match` shipped as a new module** (planned). Both `deduplicator.py` and `ui_filter.py` now consume `_canonical_key` and `_fuzzy_match` from this module — the deduplicator refactor is byte-identical in behavior (12 existing dedup tests pass unchanged).
+
+**Code-review trail (all addressed or deferred):**
+
+- WARNING (fixed in `472836b`): empty-key fallback in `filter_by_frequency` was correct but undocumented — clarifying comment added.
+- WARNING (acknowledged deviation, see #1 above): caption-band coordinates not measured.
+- SUGGESTION (rejected after verification): reviewer suggested changing test comment `"= 90.0"` to `"≈ 90.9"`. Verified the actual `rapidfuzz` value is exactly 90.0 — the dev's comment was correct.
+
+**Follow-ups (post-merge, owned by user):**
+
+1. **Manual GPU smoke** on the user's RTX 4090 with two inputs:
+   - A known-noisy TikTok with rolling auto-captions and recurring SUBSCRIBE prompts (validate noise drops)
+   - A known-good video with legitimate creator-typed text overlays (validate legitimate text NOT dropped)
+2. **If legitimate text is dropped**, fix is to make the filter MORE permissive (raise `fuzzy_threshold` 90→95 first, then `frequency_threshold` 0.95→0.97 if needed). Do NOT lower `frequency_threshold`.
+3. **Refine caption-band coordinates** based on smoke results — quick PR to update the two `RelativeRect` lines in `tiktok.py` + `instagram.py`.
+
+**Process learnings:**
+
+- Spawned `python-coder` agents do NOT have access to MCP `git-tools` or unblocked `git` in their toolset — the PO orchestrator must commit on their behalf. Worth codifying in `AGENT_TEAM.md` so the next sprint doesn't trip on this.
+- Always fact-check `rapidfuzz.fuzz.ratio` claims with actual computation before adopting reviewer math suggestions; reviewer math was wrong this round.
