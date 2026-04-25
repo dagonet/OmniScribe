@@ -106,6 +106,22 @@ def test_scene_change_enabled_env_false_parses(monkeypatch: pytest.MonkeyPatch) 
     assert cfg.scene_change_enabled is False
 
 
+def test_default_dedup_min_duration_is_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sprint OCR-Recall — dedup_min_duration default lowered from 0.5 to 0.0.
+
+    With per-frame bbox aggregation in
+    :mod:`omniscribe.ocr.bbox_aggregator`, the 0.5s floor is harmful: it
+    drops legitimate single-frame captions whose held-overlay version was
+    not visible long enough to span two sampled frames. Pinning the new
+    default here guards against accidental reversion.
+    """
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.dedup_min_duration == 0.0
+
+
 def test_merge_similarity_threshold_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Sprint 4.1 — cross-source merge threshold defaults to 0.85."""
     _strip_omni_env(monkeypatch)

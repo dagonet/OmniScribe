@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 from rapidocr import LangRec, RapidOCR
 
 from omniscribe.errors import OmniScribeError
+from omniscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
 from omniscribe.ocr.frame_sampler import sample_frames
 from omniscribe.ocr.preprocessor import preprocess
 from omniscribe.ocr.ui_filter import mask_zones
@@ -97,9 +98,14 @@ class RapidOCREngine:
         """Sample frames from ``video_path`` and return on-screen text segments.
 
         Each yielded RapidOCR result contributes zero or more
-        :class:`TranscriptSegment` instances — one per detected text box whose
-        score meets ``config.ocr_min_confidence``. ``start == end`` equals the
-        frame timestamp (sampled text has no intrinsic duration).
+        :class:`TranscriptSegment` instances — one per **aggregated text line**
+        per frame, where same-y-line bounding boxes are joined left-to-right
+        into one canonical caption string by
+        :func:`omniscribe.ocr.bbox_aggregator.aggregate_frame_bboxes`. The
+        per-bbox confidence gate (``score < ocr_min_confidence``) is applied
+        inside the aggregator before grouping. ``start == end`` equals the
+        frame timestamp (sampled text has no intrinsic duration); cross-frame
+        dedup grows the span downstream.
         """
         engine = self._ensure_loaded()
         threshold = self._config.ocr_min_confidence
@@ -124,18 +130,27 @@ class RapidOCREngine:
             if apply_mask and profile is not None:
                 processed_frame = mask_zones(processed_frame, profile.ui_exclusion_zones)
             result = engine(processed_frame)
+            # ``boxes`` is a numpy array (or None when the frame yields no
+            # detections), so ``or ()`` would raise on numpy truthiness. Guard
+            # explicitly for None and rely on the aggregator's empty-input path.
+            boxes_attr = getattr(result, "boxes", None)
+            boxes = boxes_attr if boxes_attr is not None else ()
             texts = getattr(result, "txts", ()) or ()
             scores = getattr(result, "scores", ()) or ()
-            for text, score in zip(texts, scores, strict=False):
-                if score < threshold:
-                    continue
+            aggregated = aggregate_frame_bboxes(
+                boxes,
+                texts,
+                scores,
+                min_confidence=threshold,
+            )
+            for text, mean_score in aggregated:
                 segments.append(
                     TranscriptSegment(
                         start=timestamp,
                         end=timestamp,
                         text=text,
                         source="ON-SCREEN",
-                        confidence=float(score),
+                        confidence=mean_score,
                         language=language,
                     )
                 )

@@ -71,7 +71,12 @@ class OmniScribeConfig(BaseSettings):
 
     # ── Dedup ────────────────────────────────────────────
     dedup_similarity_threshold: float = 0.85
-    dedup_min_duration: float = 0.5
+    # Sprint OCR-Recall: lowered from 0.5 to 0.0. With per-frame bbox
+    # aggregation in :mod:`omniscribe.ocr.bbox_aggregator`, consecutive frames
+    # of a held caption text-match at ratio ~1.0 and dedup spans grow
+    # naturally; a positive floor became a recall-killer for sub-second
+    # captions while serving no remaining noise-suppression purpose.
+    dedup_min_duration: float = 0.0
 
     # ── Merge (cross-source speech↔OCR) ──────────────────
     # Separate from ``dedup_similarity_threshold`` (same-source OCR dedup):

@@ -49,8 +49,29 @@ def _ocr_output(
     texts: tuple[str, ...],
     scores: tuple[float, ...],
 ) -> SimpleNamespace:
+    """Build a fake RapidOCR result with bboxes stacked vertically.
+
+    Each text gets its own y-line so the post-Sprint-OCR-Recall aggregator
+    treats them as separate segments rather than joining them into one line.
+    Box i sits at y in ``[i * 100, i * 100 + 30]`` (height 30, gap 70 → far
+    larger than the 0.5 * mean_height tolerance).
+    """
     n = len(texts)
-    boxes = np.zeros((n, 4, 2), dtype=np.float32) if n else np.zeros((0, 4, 2), dtype=np.float32)
+    if n == 0:
+        return SimpleNamespace(
+            boxes=np.zeros((0, 4, 2), dtype=np.float32), txts=texts, scores=scores
+        )
+    boxes = np.zeros((n, 4, 2), dtype=np.float32)
+    for i in range(n):
+        y_min = float(i) * 100.0
+        y_max = y_min + 30.0
+        x_min, x_max = 0.0, 100.0
+        boxes[i] = [
+            [x_min, y_min],
+            [x_max, y_min],
+            [x_max, y_max],
+            [x_min, y_max],
+        ]
     return SimpleNamespace(boxes=boxes, txts=texts, scores=scores)
 
 
