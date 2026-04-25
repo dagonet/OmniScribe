@@ -19,6 +19,7 @@ from omniscribe.ocr.ui_filter import (
     mask_zones,
 )
 from omniscribe.output import TranscriptSegment
+from omniscribe.platforms import TIKTOK_PROFILE
 from omniscribe.platforms.base import RelativeRect
 
 
@@ -140,6 +141,59 @@ def test_filter_by_patterns_empty_patterns_returns_copy_of_input() -> None:
     result = filter_by_patterns(segs, ())
     assert result == segs
     assert result is not segs
+
+
+# --- Sprint 7.1 (a) fuzzy clustering: SUBSCRIBE family collapses ----------
+def test_filter_by_frequency_fuzzy_clusters_subscribe_family() -> None:
+    # Three near-duplicate prompts each appearing once across 3 frames.
+    # Exact-Counter (pre-7.1) would see 3 distinct keys at ratio 1/3 each
+    # (all kept). Fuzzy clustering at fuzzy_threshold=90 combines them to
+    # one cluster with count 3 / 3 frames = 1.0 ratio, dropped at
+    # threshold=0.95.
+    #
+    # Each pair clears 90 under rapidfuzz.fuzz.ratio:
+    # SUBSCRIBE!/Subscribe. = 90.0; SUBSCRIBE!/SUBSCRIBE = 94.7;
+    # Subscribe./SUBSCRIBE = 94.7. (The arrow-variant "Subscribe →" is
+    # at 85.7 vs "SUBSCRIBE!" — single-link greedy can still bridge it
+    # via the "SUBSCRIBE" hub, but the assertion below uses the simpler
+    # all-pairs-match triple to keep the test robust.)
+    segs = [_ocr("SUBSCRIBE!"), _ocr("Subscribe."), _ocr("SUBSCRIBE")]
+    result = filter_by_frequency(
+        segs,
+        frame_count=3,
+        threshold=0.95,
+        fuzzy_threshold=90.0,
+    )
+    assert result == []
+
+
+# --- Sprint 7.1 (b) fuzzy negative: distinct text stays in three buckets --
+def test_filter_by_frequency_fuzzy_keeps_distinct_text() -> None:
+    # Three unrelated strings — none above fuzzy_threshold=90 vs each
+    # other. Each ends up in its own cluster at 1/3, below 0.95 drop.
+    segs = [_ocr("Hello world"), _ocr("Goodbye sun"), _ocr("Random text")]
+    result = filter_by_frequency(
+        segs,
+        frame_count=3,
+        threshold=0.95,
+        fuzzy_threshold=90.0,
+    )
+    assert [s.text for s in result] == ["Hello world", "Goodbye sun", "Random text"]
+
+
+# --- Sprint 7.1 (c) mask integration: TikTok caption band is zeroed -------
+def test_mask_zones_tiktok_profile_zeros_caption_band() -> None:
+    # 1080x1920 all-white synthetic frame run through the live TikTok
+    # profile. The new auto-caption band (mid-lower screen) MUST contain
+    # a zeroed pixel after masking. We pick a representative pixel inside
+    # the documented band y∈[0.55, 0.78].
+    height, width = 1920, 1080
+    gray = np.full((height, width), 255, dtype=np.uint8)
+    masked = mask_zones(gray, TIKTOK_PROFILE.ui_exclusion_zones)
+    # Sample point at roughly y=0.65 (mid-band), x=0.5 (centre).
+    sample_y = int(0.65 * height)
+    sample_x = int(0.5 * width)
+    assert masked[sample_y, sample_x] == 0
 
 
 if __name__ == "__main__":  # pragma: no cover
