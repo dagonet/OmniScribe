@@ -192,6 +192,12 @@ def filter_by_frequency(
             kept.append(seg)
             continue
         key = _canonical_key(seg.text)
+        # Empty canonical keys are absent from ``cluster_counts`` (they
+        # cannot meaningfully cluster — see the ``if not key`` guard in
+        # the clustering loop). Fall back to the raw exact-match count,
+        # which matches the pre-fuzzy behavior for whitespace-only OCR
+        # noise: drop only when its raw recurrence already clears
+        # ``threshold``.
         cluster_count = cluster_counts.get(key, counts[key])
         if cluster_count / frame_count >= threshold:
             continue
