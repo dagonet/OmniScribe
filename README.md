@@ -86,6 +86,56 @@ Videos from any other platform work too — just without UI-specific filtering.
 - **LLM OCR cleanup (optional)** — Fix OCR artefacts on screen-text segments via a local Ollama model. Opt-in with `--llm-cleanup`. Requires `uv sync --extra llm` and a running Ollama with the configured model pulled (default `llama3.2:3b`).
 - **LLM ASR punctuation cleanup (optional)** — Improve punctuation and capitalization on speech segments via a local Ollama model. Opt-in with `--asr-cleanup`. Reuses the same `[llm]` extras and Ollama host as OCR cleanup.
 
+## Known Limitations
+
+OmniScribe is in active development (alpha). The pipeline produces a usable
+combined transcript on most short-form videos, but two areas are known to
+produce noisy or under-recalled output:
+
+### OCR noise on text-heavy backgrounds
+
+Videos with persistently visible background text — diplomas/certificates on
+a wall, dense channel-branding overlays, on-set documents — produce per-frame
+OCR detections that vary slightly between frames (different bounding-box
+slicing, different sub-word fragments). Each variant lands in its own
+canonical-text bucket, defeats cross-frame dedup, and survives the UI
+frequency filter (because no single canonical string repeats often enough
+to cross the threshold). The result is dozens of sub-second `[ON-SCREEN]`
+artifact segments mixed in with real captions.
+
+The real captions still cluster correctly into multi-second `[ON-SCREEN]`
+segments. The noise sits alongside them.
+
+**Workarounds today:**
+- `--no-ocr` — speech-only transcript. Fastest if you don't need on-screen
+  text at all.
+- Post-process the JSON output: `jq '.segments |= map(select(.end - .start
+  >= 1.0))'` (or equivalent) drops sub-second artifacts and keeps the
+  multi-second clusters that represent real captions. The `|=` form
+  preserves the wrapping object (language, source path metadata); plain
+  `|` would flatten to just the filtered array.
+- Tune `OMNI_OCR_MIN_CONFIDENCE` (default `0.6`) higher to suppress
+  low-confidence partial detections, at the cost of also missing some real
+  text.
+
+A planned post-0.1.0 sprint will add caption-region masking and/or fuzzy
+frequency filtering to cut this noise floor without sacrificing real text
+recall.
+
+### `[BOTH]` emission can be suppressed at SPEECH segment boundaries
+
+The cross-source merge in `merge_channels` requires a strict temporal overlap
+(`speech.start < ocr.end AND ocr.start < speech.end`). OCR segments are
+point-timed at the frame timestamp (`start == end`), so an OCR detection
+landing exactly on a SPEECH boundary fails the strict-less-than check —
+even with perfect text similarity — and emits as `[ON-SCREEN]` instead of
+`[BOTH]`. With 1 fps OCR sampling and seconds-resolution Whisper segment
+boundaries, boundary collisions are not rare.
+
+The transcript is still correct (the on-screen text is captured); the
+"this was both spoken and shown" tag is just absent on those segments.
+A planned post-0.1.0 sprint will revisit the boundary semantics.
+
 ## Requirements
 
 - Python 3.11 or 3.12
