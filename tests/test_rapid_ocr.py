@@ -419,3 +419,51 @@ def test_extract_records_last_frame_count(tmp_path: Path) -> None:
         ocr.extract(video)
 
     assert ocr.last_frame_count == 3
+
+
+def test_extract_aggregates_same_line_bboxes_into_one_segment(tmp_path: Path) -> None:
+    """Sprint OCR-Recall — wiring guard for the bbox aggregator.
+
+    The default ``_ocr_output`` fixture stacks bboxes vertically so each text
+    becomes its own segment; that's deliberate (it preserves the intent of
+    the original per-bbox tests) but it also means the aggregation call in
+    :meth:`RapidOCREngine.extract` could be removed and every other test
+    would still pass — false coverage. This test feeds two bboxes on the
+    SAME y-line and asserts the engine emits ONE joined segment, locking
+    the wiring so an accidental refactor surfaces immediately.
+    """
+    config = _make_config(ocr_min_confidence=0.6)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    # Two bboxes on the same y-line (y in [0, 30]), x-adjacent: left then
+    # right. Aggregator should merge them into ``"left right"``.
+    boxes = np.array(
+        [
+            [[0.0, 0.0], [50.0, 0.0], [50.0, 30.0], [0.0, 30.0]],
+            [[60.0, 0.0], [110.0, 0.0], [110.0, 30.0], [60.0, 30.0]],
+        ],
+        dtype=np.float32,
+    )
+    same_line_result = SimpleNamespace(boxes=boxes, txts=("left", "right"), scores=(0.9, 0.8))
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = same_line_result
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "omniscribe.ocr.rapid_ocr.sample_frames",
+            return_value=iter([(2.5, _fake_frame())]),
+        ),
+    ):
+        segments = RapidOCREngine(config).extract(video)
+
+    assert len(segments) == 1
+    seg = segments[0]
+    assert seg.text == "left right"
+    assert seg.source == "ON-SCREEN"
+    assert seg.start == 2.5
+    assert seg.end == 2.5
+    # Mean confidence of (0.9, 0.8).
+    assert seg.confidence == pytest.approx(0.85)

@@ -122,6 +122,23 @@ def test_default_dedup_min_duration_is_zero(monkeypatch: pytest.MonkeyPatch) -> 
     assert cfg.dedup_min_duration == 0.0
 
 
+@pytest.mark.parametrize("bad", [-0.1, -1.0, -30.0])
+def test_dedup_min_duration_negative_rejects(monkeypatch: pytest.MonkeyPatch, bad: float) -> None:
+    """Sprint OCR-Recall — negative ``dedup_min_duration`` raises ``ValidationError``.
+
+    Without the validator, ``OMNI_DEDUP_MIN_DURATION=-1.0`` would be silently
+    accepted and the floor would be effectively disabled (every cluster
+    duration ``>= 0`` clears a negative threshold). Failing fast at config
+    construction is the right behaviour.
+    """
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        OmniScribeConfig(dedup_min_duration=bad)
+
+
 def test_merge_similarity_threshold_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """Sprint 4.1 — cross-source merge threshold defaults to 0.85."""
     _strip_omni_env(monkeypatch)

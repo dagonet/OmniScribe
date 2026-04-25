@@ -130,13 +130,17 @@ class RapidOCREngine:
             if apply_mask and profile is not None:
                 processed_frame = mask_zones(processed_frame, profile.ui_exclusion_zones)
             result = engine(processed_frame)
-            # ``boxes`` is a numpy array (or None when the frame yields no
-            # detections), so ``or ()`` would raise on numpy truthiness. Guard
-            # explicitly for None and rely on the aggregator's empty-input path.
+            # Guard explicitly for ``None`` rather than ``or ()``: ``boxes`` is
+            # a numpy array on populated frames and ``or`` raises on numpy
+            # truthiness. ``txts`` / ``scores`` are tuples today, but the same
+            # pattern keeps the call site robust if RapidOCR ever returns
+            # numpy arrays for them too.
             boxes_attr = getattr(result, "boxes", None)
             boxes = boxes_attr if boxes_attr is not None else ()
-            texts = getattr(result, "txts", ()) or ()
-            scores = getattr(result, "scores", ()) or ()
+            texts_attr = getattr(result, "txts", None)
+            texts = texts_attr if texts_attr is not None else ()
+            scores_attr = getattr(result, "scores", None)
+            scores = scores_attr if scores_attr is not None else ()
             aggregated = aggregate_frame_bboxes(
                 boxes,
                 texts,

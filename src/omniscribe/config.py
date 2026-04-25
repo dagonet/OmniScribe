@@ -150,6 +150,20 @@ class OmniScribeConfig(BaseSettings):
             raise ValueError(f"output_format must be one of: {allowed}; got {v!r}")
         return v
 
+    @field_validator("dedup_min_duration", mode="after")
+    @classmethod
+    def _validate_dedup_min_duration(cls, v: float) -> float:
+        """Reject negative ``dedup_min_duration`` values.
+
+        A negative duration is nonsensical (cluster spans cannot be negative)
+        and would silently disable the floor while looking like a configured
+        value. ``0.0`` is the documented default after Sprint OCR-Recall and
+        is allowed.
+        """
+        if v < 0.0:
+            raise ValueError(f"dedup_min_duration must be >= 0.0; got {v!r}")
+        return v
+
     @field_validator("merge_similarity_threshold", mode="after")
     @classmethod
     def _validate_merge_similarity_threshold(cls, v: float) -> float:
