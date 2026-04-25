@@ -543,7 +543,7 @@ requires-dist = [
     { name = "rapidocr", specifier = ">=3.8,<4.0" },
     { name = "rich", specifier = ">=13.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.8" },
-    { name = "typer", extras = ["all"], specifier = ">=0.12" },
+    { name = "typer", specifier = ">=0.13" },
     { name = "yt-dlp", specifier = ">=2024.0" },
 ]
 provides-extras = ["llm", "dev"]
