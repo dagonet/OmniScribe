@@ -96,7 +96,7 @@ def test_speech_segments_pass_through_in_order_unchanged() -> None:
 
 
 def test_interleaved_speech_and_on_screen_preserves_input_order() -> None:
-    """SPEECH stays in receipt order; ON-SCREEN runs are collapsed in place."""
+    """SPEECH stays in time order; ON-SCREEN runs are collapsed and re-sorted by start."""
     segments = [
         _speech(0.0, 1.0, "speech-1"),
         _on_screen(0.5, "overlay", 0.9),
@@ -222,3 +222,21 @@ def test_dedup_far_apart_identical_text_does_not_overcluster() -> None:
     assert len(result) == 2
     assert [s.start for s in result] == [10.0, 50.0]
     assert [s.end for s in result] == [10.0, 50.0]
+
+
+def test_dedup_drops_whitespace_only_segments() -> None:
+    """Blank/whitespace-only ON-SCREEN segments are dropped before clustering.
+
+    Without this guard, every empty or whitespace-only string canonicalises to
+    ``""`` and the segments would all bucket together at min_duration=0.0,
+    producing a multi-second cluster whose text is whatever spaces/newlines
+    the first noise segment happened to carry.
+    """
+    segments = [
+        _on_screen(12.0, "   "),
+        _on_screen(13.0, ""),
+        _on_screen(14.0, "\n"),
+    ]
+    result = dedup_segments(segments, threshold=0.85, min_duration=0.0, gap_tolerance=GAP_1FPS)
+
+    assert result == []

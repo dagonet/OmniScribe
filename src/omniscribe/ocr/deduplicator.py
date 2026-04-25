@@ -49,6 +49,11 @@ def _flush_cluster(
 
     Returns ``None`` when the cluster span ``end - start`` is strictly less
     than ``min_duration``.
+
+    Assumes each segment satisfies ``seg.end >= seg.start`` and the cluster is
+    in non-decreasing start order — caller responsibility. Inverted-time
+    segments would pass the duration guard with a negative span and produce
+    inverted output.
     """
     first = cluster[0]
     last = cluster[-1]
@@ -126,7 +131,14 @@ def dedup_segments(
 
     grouped: dict[str, list[TranscriptSegment]] = defaultdict(list)
     for seg in onscreen:
-        grouped[_canonical_key(seg.text)].append(seg)
+        key = _canonical_key(seg.text)
+        if not key:
+            # Skip blank/whitespace-only OCR noise: at min_duration=0.0 these
+            # would otherwise survive as a multi-second whitespace cluster
+            # whose text is whatever raw spaces/newlines the first noise
+            # segment happened to carry.
+            continue
+        grouped[key].append(seg)
 
     clustered: list[TranscriptSegment] = []
     for group in grouped.values():
