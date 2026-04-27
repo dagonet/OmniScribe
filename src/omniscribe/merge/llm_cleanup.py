@@ -198,6 +198,7 @@ def cleanup_ocr_segments(
             model=model_name,
             messages=[{"role": "user", "content": _PROMPT_TEMPLATE.format(text=seg.text)}],
             options={"temperature": 0.0},
+            keep_alive=config.llm_cleanup_keep_alive_s,
         )
 
         # Response shape: ollama-python returns ``{"message": {"content": ...}}``
@@ -210,6 +211,9 @@ def cleanup_ocr_segments(
             cleaned = message.get("content")
         else:
             cleaned = getattr(message, "content", None)
+
+        if cleaned is not None:
+            cleaned = cleaned.replace("\r", "")
 
         # Safety rails — empty/whitespace-only AND overlong responses both keep
         # the original text. Empty is treated identically to hallucination:
@@ -337,6 +341,7 @@ def cleanup_speech_segments(
             model=model_name,
             messages=[{"role": "user", "content": _ASR_PROMPT_TEMPLATE.format(text=seg.text)}],
             options={"temperature": 0.0},
+            keep_alive=config.llm_cleanup_keep_alive_s,
         )
 
         cleaned: str | None = None
@@ -347,6 +352,9 @@ def cleanup_speech_segments(
             cleaned = message.get("content")
         else:
             cleaned = getattr(message, "content", None)
+
+        if cleaned is not None:
+            cleaned = cleaned.replace("\r", "")
 
         if not cleaned or not cleaned.strip():
             logger.warning(

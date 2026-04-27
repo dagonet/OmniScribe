@@ -449,7 +449,7 @@ def test_sequential_cleanup_respects_disjoint_targets(mock_ollama_client: MagicM
 
     # Echo-back prefix so we can detect which cleanup fired on each segment.
     # OCR prompt fires on ON-SCREEN + BOTH; ASR prompt fires on SPEECH.
-    def _chat_side_effect(*, model, messages, options):  # type: ignore[no-untyped-def]
+    def _chat_side_effect(*, model, messages, options, keep_alive):  # type: ignore[no-untyped-def]
         content = messages[0]["content"]
         # Each prompt template ends with ``TEXT: {text}``.
         text = content.split("TEXT: ", 1)[1]
@@ -478,6 +478,52 @@ def test_sequential_cleanup_respects_disjoint_targets(mock_ollama_client: MagicM
     for seg in step2:
         assert not (seg.text.startswith("ASR[") and "OCR[" in seg.text)
         assert not (seg.text.startswith("OCR[") and "ASR[" in seg.text)
+
+
+# ── Sprint 7.2 — \r stripping + keep_alive ─────────────────────────
+
+
+def test_carriage_return_stripped_from_response(
+    mock_ollama_client: MagicMock,
+) -> None:
+    """\\r\\n line endings and stray \\r are removed from cleaned text."""
+    segments = [_seg("ON-SCREEN", "abcdef")]
+    mock_ollama_client.chat.return_value = {"message": {"content": "ab\r\ncd\ref\rgh"}}
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        result = cleanup_ocr_segments(segments, _cfg())
+
+    # \r\n → \n, stray \r → removed
+    assert result[0].text == "ab\ncdefgh"
+
+
+def test_keep_alive_passed_to_chat(mock_ollama_client: MagicMock) -> None:
+    """keep_alive kwarg is forwarded to client.chat()."""
+    segments = [_seg("ON-SCREEN", "text")]
+    cfg = OmniScribeConfig(llm_cleanup_enabled=True, llm_cleanup_keep_alive_s=60.0)
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        cleanup_ocr_segments(segments, cfg)
+
+    assert mock_ollama_client.chat.call_args.kwargs["keep_alive"] == 60.0
+
+
+def test_keep_alive_sentinel_negative_one(mock_ollama_client: MagicMock) -> None:
+    """-1.0 sentinel passes through as-is (ollama forever)."""
+    segments = [_seg("ON-SCREEN", "text")]
+    cfg = OmniScribeConfig(llm_cleanup_enabled=True, llm_cleanup_keep_alive_s=-1.0)
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        cleanup_ocr_segments(segments, cfg)
+
+    assert mock_ollama_client.chat.call_args.kwargs["keep_alive"] == -1.0
+
+
+def test_keep_alive_passed_to_speech_chat(mock_ollama_client: MagicMock) -> None:
+    """keep_alive kwarg forwarded in cleanup_speech_segments too."""
+    segments = [_seg("SPEECH", "text")]
+    cfg = OmniScribeConfig(llm_asr_cleanup_enabled=True, llm_cleanup_keep_alive_s=120.0)
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        cleanup_speech_segments(segments, cfg)
+
+    assert mock_ollama_client.chat.call_args.kwargs["keep_alive"] == 120.0
 
 
 @pytest.mark.integration

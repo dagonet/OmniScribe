@@ -170,16 +170,15 @@ def test_merge_channels_non_overlap_keeps_both_even_if_text_matches() -> None:
     assert {s.source for s in merged} == {"SPEECH", "ON-SCREEN"}
 
 
-def test_merge_channels_strict_boundary_no_overlap() -> None:
-    # Touching boundaries (speech.end == ocr.start) must NOT overlap.
+def test_merge_channels_touching_boundary_emits_both() -> None:
+    # Touching boundaries (speech.end == ocr.start) now DO overlap (<= semantics).
     speech = [_speech(0.0, 5.0, "hello world")]
     ocr = [_ocr(5.0, 10.0, "hello world")]
 
     merged = merge_channels(speech, ocr, threshold=_T)
 
-    assert len(merged) == 2
-    sources = [s.source for s in merged]
-    assert "BOTH" not in sources
+    assert len(merged) == 1
+    assert merged[0].source == "BOTH"
 
 
 def test_merge_channels_multiple_ocr_picks_highest_similarity() -> None:
@@ -327,21 +326,19 @@ def test_merge_channels_german_caption_emits_both() -> None:
     assert len(both) == 1
 
 
-def test_merge_channels_point_ocr_on_speech_end_no_both() -> None:
-    """Risk-6 — strict-``<`` boundary semantics: point OCR landing exactly on
-    ``speech.end`` does NOT emit BOTH.
+def test_merge_channels_point_ocr_on_speech_end_emits_both() -> None:
+    """Inclusive-``<=`` boundary semantics: point OCR landing exactly on
+    ``speech.end`` DOES emit BOTH.
 
     With 1fps OCR sampling and seconds-resolution Whisper boundaries,
-    boundary collisions are not rare. This test locks the current
-    strict-``<`` contract; loosening to ``<=`` would be a deliberate,
-    tested change rather than accidental drift.
+    inclusive overlap ensures boundary collisions correctly merge.
     """
     speech = [_speech(0.0, 5.0, "hello world")]
     ocr = [_ocr(5.0, 5.0, "hello world")]  # point OCR at speech.end
 
     merged = merge_channels(speech, ocr, threshold=_T)
 
-    assert "BOTH" not in {s.source for s in merged}
+    assert "BOTH" in {s.source for s in merged}
 
 
 def test_merge_channels_point_ocr_just_inside_speech_end_emits_both() -> None:

@@ -158,12 +158,12 @@ def write_markdown(transcript: Transcript, path: Path) -> None:
 
 
 def _overlaps(speech: TranscriptSegment, ocr: TranscriptSegment) -> bool:
-    """Strict temporal overlap: touching boundaries do NOT overlap.
+    """Inclusive temporal overlap: touching boundaries DO overlap.
 
-    Two segments overlap iff ``speech.start < ocr.end`` AND ``ocr.start < speech.end``.
-    Example: ``speech=[0.0, 5.0]`` and ``ocr=[5.0, 10.0]`` do NOT overlap.
+    Two segments overlap iff ``speech.start <= ocr.end`` AND ``ocr.start <= speech.end``.
+    Example: ``speech=[0.0, 5.0]`` and ``ocr=[5.0, 10.0]`` DO overlap.
     """
-    return speech.start < ocr.end and ocr.start < speech.end
+    return speech.start <= ocr.end and ocr.start <= speech.end
 
 
 def _normalize_cue(text: str) -> str:
@@ -181,8 +181,8 @@ def merge_channels(
     Algorithm
     ---------
     For each SPEECH segment, find all OCR segments that temporally overlap it
-    (strict rule: ``speech.start < ocr.end AND ocr.start < speech.end`` —
-    touching boundaries do NOT overlap). Among overlapping OCR segments,
+    (inclusive rule: ``speech.start <= ocr.end AND ocr.start <= speech.end`` —
+    touching boundaries DO overlap). Among overlapping OCR segments,
     compute ``rapidfuzz.fuzz.WRatio(speech.text, ocr.text)`` (returns 0-100).
     Any OCR meeting ``WRatio >= threshold * 100`` is a candidate to collapse
     with the speech segment. Pick the candidate with the highest WRatio

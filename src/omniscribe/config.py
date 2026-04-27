@@ -59,6 +59,7 @@ class OmniScribeConfig(BaseSettings):
     llm_cleanup_model: str = "llama3.2:3b"
     llm_cleanup_host: str = "http://localhost:11434"
     llm_cleanup_timeout_s: float = 30.0
+    llm_cleanup_keep_alive_s: float = 300.0
     # Sprint 6.2 — opt-in per-segment punctuation + capitalization cleanup on
     # SPEECH segments. Reuses llm_cleanup_model / _host / _timeout_s; only the
     # enable flag is separate so users can toggle OCR vs ASR independently.
@@ -134,6 +135,19 @@ class OmniScribeConfig(BaseSettings):
         """
         if v <= 0:
             raise ValueError(f"llm_cleanup_timeout_s must be > 0; got {v!r}")
+        return v
+
+    @field_validator("llm_cleanup_keep_alive_s", mode="after")
+    @classmethod
+    def _validate_llm_cleanup_keep_alive_s(cls, v: float) -> float:
+        """Reject keep-alive values below the -1 sentinel.
+
+        ``-1.0`` means "keep forever" (ollama never unloads the model);
+        ``0.0`` means "unload immediately after each request"; positive
+        values are seconds to keep the model loaded after the last call.
+        """
+        if v < -1.0:
+            raise ValueError(f"llm_cleanup_keep_alive_s must be >= -1.0; got {v!r}")
         return v
 
     @field_validator("output_format", mode="before")

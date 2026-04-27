@@ -122,24 +122,18 @@ A planned post-0.1.0 sprint will add caption-region masking and/or fuzzy
 frequency filtering to cut this noise floor without sacrificing real text
 recall.
 
-### `[BOTH]` emission can be suppressed at SPEECH segment boundaries
+### `[BOTH]` emission uses inclusive boundary overlap
 
-The cross-source merge in `merge_channels` requires a strict temporal overlap
-(`speech.start < ocr.end AND ocr.start < speech.end`). OCR segments are
-point-timed at the frame timestamp (`start == end`), so an OCR detection
-landing exactly on a SPEECH boundary fails the strict-less-than check —
-even with perfect text similarity — and emits as `[ON-SCREEN]` instead of
-`[BOTH]`. With 1 fps OCR sampling and seconds-resolution Whisper segment
-boundaries, boundary collisions are not rare.
-
-The transcript is still correct (the on-screen text is captured); the
-"this was both spoken and shown" tag is just absent on those segments.
-A planned post-0.1.0 sprint will revisit the boundary semantics.
+The cross-source merge in `merge_channels` uses inclusive temporal overlap
+(`speech.start <= ocr.end AND ocr.start <= speech.end`). Touching boundaries
+and point-timed OCR segments (single-frame `start == end`) landing on a
+SPEECH boundary now correctly emit `[BOTH]` when text similarity meets the
+merge threshold.
 
 ## Requirements
 
 - Python 3.11 or 3.12
-- NVIDIA GPU with CUDA (recommended, 8+ GB VRAM)
+- NVIDIA GPU with CUDA 12.x (recommended, 8+ GB VRAM). Verify: `python -c "import onnxruntime as ort; print(ort.get_available_providers())"` — should list `CUDAExecutionProvider`
 - ffmpeg
 
 ## Status

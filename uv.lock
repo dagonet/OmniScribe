@@ -535,7 +535,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "numpy", specifier = ">=1.26,<3.0" },
     { name = "ollama", marker = "extra == 'llm'", specifier = ">=0.4" },
-    { name = "onnxruntime-gpu", specifier = ">=1.18,<2.0" },
+    { name = "onnxruntime-gpu", specifier = ">=1.20,<2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
