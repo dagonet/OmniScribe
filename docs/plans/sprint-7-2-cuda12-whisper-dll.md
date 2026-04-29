@@ -109,4 +109,18 @@ OMNI_LOG_LEVEL=DEBUG omniscribe transcribe sample.mp4 --language en -o out.json
 
 ## Close-out
 
-_TBD — filled in after merge._
+**Merged 2026-04-29** as PR [#22](https://github.com/dagonet/OmniScribe/pull/22), squash commit `0717d8d`. Two pre-squash commits: `b1619fc` (impl) and `6a9fa62` (review fix-up — `n_dirs` counter moved inside `OSError` suppression to count *successful* registrations matching the log wording; module-level `logger` hoisted above the shim).
+
+**Final test count:** 321 baseline → 325 passed, 2 deselected (+4 new shim tests). ruff format/check clean.
+
+**Deviations from plan:**
+
+1. **Test 1 (`test_shim_noop_on_non_windows`) added `monkeypatch.setattr("sys.platform", "linux")`.** Plan said "leave `sys.platform=linux` as-is", but on a Windows dev box the test would otherwise pick up real `nvidia/*/bin` dirs and fail. The monkeypatch makes the test cross-platform without weakening intent.
+2. **`n_dirs` counter initially counted dirs *encountered* (where `bin_dir.is_dir()` was true), not dirs *successfully registered*.** Code review caught the asymmetry with the log line ("registered N dir(s)"); fix-up commit moved the increment inside the `contextlib.suppress(OSError)` block.
+3. **Module-level `logger` was declared at line 99 (after the shim ran at import line 87).** The first impl used `logging.getLogger(__name__)` inline inside the shim. Code review caught the inconsistency; fix-up hoisted the binding above the shim.
+
+**Manual smoke (Windows RTX 4090, no system CUDA):** Whisper loaded on `cuda` with `compute_type=float16` and processed audio with no `LoadLibrary("cublas64_12.dll")` errors — the stated AC was met.
+
+**AC-wording miss:** AC #3 expected to verify the DEBUG `nvidia DLL shim:` summary log line, but the shim runs at module-import time *before* `OMNI_LOG_LEVEL` is read and `logging` is configured, so its `logger.debug(...)` call gets dropped at the default WARNING level. Absence of `LoadLibrary` errors is the actual user-facing signal; the DEBUG line is intrinsically not capturable via `OMNI_LOG_LEVEL`. Acknowledged here as a wording artifact, not a regression.
+
+**Follow-ups (post-merge):** Smoke surfaced a separate `cufft64_11.dll missing` ORT failure → tracked as Sprint 7.3 (PR #23, merged same day).

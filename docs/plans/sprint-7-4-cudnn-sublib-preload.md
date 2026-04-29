@@ -201,4 +201,28 @@ $env:OMNI_LOG_LEVEL="DEBUG"; uv run omniscribe transcribe "<tiktok-url>" --langu
 
 ## Close-out
 
-_TBD — filled in after merge._
+**Merged 2026-04-29** as PR [#24](https://github.com/dagonet/OmniScribe/pull/24), squash commit `cc1429b`. Single feature commit (`4c80903`).
+
+**Plan went through 5 challenge rounds** (1 architect → 3 self-challenge → 1 architect). Each round surfaced material findings: stub-first ordering hoisted explicitly (vs ASCII-coincidence sort), asymmetric error handling fixed, `Path("")`-equals-cwd glob hazard caught and walrus-fixed, test-coverage caveat made explicit (mocked CDLL cannot detect symbol-load bugs), `mock_add.call_count == 4` assertion preserved. Architect was unavailable for one round due to org monthly usage limit; self-challenge filled the gap and the architect re-validated on the final round.
+
+**Final test count:** 325 → 325 (no test added; `test_shim_preloads_when_dlls_present` broadened from 4 → 6 expected CDLL calls in sorted-ASCII order: cudart → cublas → cudnn-stub → cudnn_graph → cudnn_ops → cufft). ruff format/check clean.
+
+**Deviations from plan:** None.
+
+**Manual smoke (Windows RTX 4090, no system CUDA, TikTok URL):**
+
+- ✅ No `Invalid handle. Cannot load symbol cudnnCreate` error
+- ✅ No `Failed to create CUDAExecutionProvider` warning
+- ✅ No `automatically shifted to be executed under CPUExecutionProvider` fallback
+- ✅ No `cudnn (stub|sub-lib) preload failed` breadcrumbs — all 12 cuDNN-side preloads (1 cudart + 1 cublas + 1 stub + 8 sub-libs + 1 cufft) completed cleanly
+- ✅ All three RapidOCR engines (`det`, `cls`, `rec`) initialized on `CUDAExecutionProvider` within ~120 ms total — no fallback warnings between them
+- ✅ Whisper processed `Processing audio with duration 02:16.558` and VAD ran cleanly
+- ✅ **75 transcript segments** written to `out.json`
+
+**Follow-ups (post-merge):** None for the immediate fix. Future-PO should consult the `Out of scope` section (CUDA 13 / cuDNN 10 migration touchpoints) when NVIDIA ships the next major.
+
+**Process learnings:**
+
+1. The bug class Sprint 7.4 fixed (silent DLL-symbol-load failure → CPU fallback) is not catchable by mocked unit tests. Manual smoke is the only validation gate. Future sprints touching the same `_register_nvidia_dll_dirs()` shim should keep the test-coverage caveat in their AC section.
+2. The architect's "org monthly usage limit" was a real obstacle mid-sprint. Self-challenge can substitute for one round but not indefinitely — the architect's evidence-grounded review on round 5 caught a genuine defect (missing `mock_add` assertion in the test rewrite description) that 3 self-challenges had missed.
+3. CTranslate2's `__init__.py` glob-preload pattern (`for library in glob.glob(...): ctypes.CDLL(library)`) was the proven precedent that broke the design tie. Borrowing patterns from working in-tree dependencies beats re-deriving from first principles.

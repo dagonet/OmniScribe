@@ -123,4 +123,12 @@ OMNI_LOG_LEVEL=DEBUG omniscribe transcribe sample.mp4 --language en --ocr -o out
 
 ## Close-out
 
-_TBD — filled in after merge._
+**Merged 2026-04-29** as PR [#23](https://github.com/dagonet/OmniScribe/pull/23), squash commit `ca0ab2e`. Single feature commit (`d70388f`). Plan went through 2 challenge rounds — caught the missing cuDNN preload (later 7.4 territory) and the test mock `create=True` requirement before any code was written.
+
+**Final test count:** 325 → 325 (no test added; `test_shim_preloads_when_dlls_present` broadened from 3 → 4 expected CDLL calls in deterministic order). ruff format/check clean. `nvidia-cufft-cu12==11.4.1.4` resolved into `uv.lock` with `sys_platform == 'win32'` marker.
+
+**Deviations from plan:** None. The shim's existing comment was lightly expanded to call out the ORT-fallback rationale alongside the new cuFFT block — consistent with the plan's intent.
+
+**Manual smoke (Windows RTX 4090, no system CUDA):** The `cufft64_11.dll missing` error went away — Sprint 7.3's stated narrow goal achieved. **However**, the same smoke surfaced a *different* ORT failure: `Invalid handle. Cannot load symbol cudnnCreate`. Root cause: cuDNN 9 was split into 9 DLLs and Sprints 7.2/7.3 only preloaded the `cudnn64_9.dll` loader stub; `cudnnCreate` lives in the un-preloaded `cudnn_ops64_9.dll`. PR #23 merged anyway because its narrow scope (cuFFT) was correctly fixed; the cudnn sub-library issue was a separate scope.
+
+**Follow-ups (post-merge):** cuDNN sub-library preload tracked as Sprint 7.4 (PR #24, merged same day).
