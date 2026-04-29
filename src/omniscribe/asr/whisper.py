@@ -2,16 +2,98 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
+import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from faster_whisper import BatchedInferencePipeline, WhisperModel
+# ``os.add_dll_directory()`` returns a cookie; the directory is removed from
+# the DLL search path when the cookie is garbage-collected.  Keep references
+# alive for the lifetime of the process so CTranslate2 can find cublas64_12.dll
+# at inference time.
+_nvidia_dll_cookies: list[object] = []
 
-from omniscribe.output import TranscriptSegment
+
+def _register_nvidia_dll_dirs() -> None:
+    """Register nvidia CUDA DLL directories and preload critical DLLs on Windows.
+
+    nvidia-* pip packages (cublas, cudnn, etc.) ship as namespace packages
+    without ``__init__.py``, so their ``bin/`` directories are never added to
+    the DLL search path.  CTranslate2 needs ``cublas64_12.dll`` at inference
+    time, and ``os.add_dll_directory()`` is the only way to make DLL
+    directories visible.
+
+    ``os.add_dll_directory`` alone is not enough: when CTranslate2 calls
+    ``LoadLibrary("cublas64_12.dll")``, Windows must resolve transitive
+    dependencies (e.g. ``cudart64_12.dll``) across *different* registered
+    directories.  The loader does not always walk all registered directories
+    when chasing transitive deps.  Explicitly preloading the critical DLLs
+    via ctypes guarantees they are resident before CTranslate2 ever asks for
+    them.
+    """
+    if sys.platform != "win32":
+        return
+
+    import ctypes
+
+    n_dirs = 0
+    n_preloaded = 0
+
+    for p in sys.path:
+        nvidia_base = Path(p) / "nvidia"
+        if not nvidia_base.is_dir():
+            continue
+
+        # Step 1 — register every nvidia/*/bin directory.
+        bin_dirs: dict[str, Path] = {}
+        for child in nvidia_base.iterdir():
+            bin_dir = child / "bin"
+            if bin_dir.is_dir():
+                with contextlib.suppress(OSError):
+                    _nvidia_dll_cookies.append(os.add_dll_directory(str(bin_dir)))
+                bin_dirs[child.name] = bin_dir
+                n_dirs += 1
+
+        # Step 2 — preload cublas/cudnn and their transitive deps.  Order
+        # matters: cudart must load first (cublas links against it), and
+        # cudnn must load after cublas (cudnn links against cublas).
+        _preload = bin_dirs.get("cuda_runtime", Path()) / "cudart64_12.dll"
+        if _preload.exists():
+            with contextlib.suppress(OSError):
+                ctypes.CDLL(str(_preload))
+                n_preloaded += 1
+
+        _preload = bin_dirs.get("cublas", Path()) / "cublas64_12.dll"
+        if _preload.exists():
+            with contextlib.suppress(OSError):
+                ctypes.CDLL(str(_preload))
+                n_preloaded += 1
+
+        _preload = bin_dirs.get("cudnn", Path()) / "cudnn64_9.dll"
+        if _preload.exists():
+            with contextlib.suppress(OSError):
+                ctypes.CDLL(str(_preload))
+                n_preloaded += 1
+
+    logging.getLogger(__name__).debug(
+        "nvidia DLL shim: registered %d dir(s), preloaded %d DLL(s)",
+        n_dirs,
+        n_preloaded,
+    )
+
+
+_register_nvidia_dll_dirs()
+
+from faster_whisper import (  # noqa: E402 (must follow DLL registration)
+    BatchedInferencePipeline,
+    WhisperModel,
+)
+
+from omniscribe.output import TranscriptSegment  # noqa: E402 (must follow DLL registration)
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from omniscribe.config import OmniScribeConfig
 
 logger = logging.getLogger(__name__)
