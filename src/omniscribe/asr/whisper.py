@@ -58,9 +58,13 @@ def _register_nvidia_dll_dirs() -> None:
                     n_dirs += 1
                 bin_dirs[child.name] = bin_dir
 
-        # Step 2 — preload cublas/cudnn and their transitive deps.  Order
-        # matters: cudart must load first (cublas links against it), and
-        # cudnn must load after cublas (cudnn links against cublas).
+        # Step 2 — preload cublas/cudnn/cufft and their transitive deps.
+        # Order matters: cudart must load first (cublas links against it),
+        # cudnn must load after cublas (cudnn links against cublas), and
+        # cufft is independent but kept last so the order matches the
+        # documented preload sequence.  cufft is required by
+        # onnxruntime-gpu's CUDAExecutionProvider (used by RapidOCR);
+        # without it, ORT silently falls back to CPU.
         _preload = bin_dirs.get("cuda_runtime", Path()) / "cudart64_12.dll"
         if _preload.exists():
             with contextlib.suppress(OSError):
@@ -74,6 +78,12 @@ def _register_nvidia_dll_dirs() -> None:
                 n_preloaded += 1
 
         _preload = bin_dirs.get("cudnn", Path()) / "cudnn64_9.dll"
+        if _preload.exists():
+            with contextlib.suppress(OSError):
+                ctypes.CDLL(str(_preload))
+                n_preloaded += 1
+
+        _preload = bin_dirs.get("cufft", Path()) / "cufft64_11.dll"
         if _preload.exists():
             with contextlib.suppress(OSError):
                 ctypes.CDLL(str(_preload))

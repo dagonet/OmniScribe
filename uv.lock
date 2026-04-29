@@ -515,6 +515,25 @@ wheels = [
 ]
 
 [[package]]
+name = "nvidia-cufft-cu12"
+version = "11.4.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nvidia-nvjitlink-cu12" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/ee/29955203338515b940bd4f60ffdbc073428f25ef9bfbce44c9a066aedc5c/nvidia_cufft_cu12-11.4.1.4-py3-none-win_amd64.whl", hash = "sha256:8e5bfaac795e93f80611f807d42844e8e27e340e0cde270dcb6c65386d795b80", size = 200067309, upload-time = "2025-06-05T20:13:59.762Z" },
+]
+
+[[package]]
+name = "nvidia-nvjitlink-cu12"
+version = "12.9.86"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/7e/2eecb277d8a98184d881fb98a738363fd4f14577a4d2d7f8264266e82623/nvidia_nvjitlink_cu12-12.9.86-py3-none-win_amd64.whl", hash = "sha256:cc6fcec260ca843c10e34c936921a1c426b351753587fdd638e8cff7b16bb9db", size = 35584936, upload-time = "2025-06-05T20:16:08.525Z" },
+]
+
+[[package]]
 name = "ollama"
 version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -550,6 +569,7 @@ dependencies = [
     { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'" },
     { name = "nvidia-cuda-runtime-cu12", marker = "sys_platform == 'win32'" },
     { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'" },
+    { name = "nvidia-cufft-cu12", marker = "sys_platform == 'win32'" },
     { name = "onnxruntime-gpu" },
     { name = "pydantic-settings" },
     { name = "rapidfuzz" },
@@ -578,6 +598,7 @@ requires-dist = [
     { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
     { name = "nvidia-cuda-runtime-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
     { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'", specifier = ">=9,<10" },
+    { name = "nvidia-cufft-cu12", marker = "sys_platform == 'win32'", specifier = ">=11,<12" },
     { name = "ollama", marker = "extra == 'llm'", specifier = ">=0.4" },
     { name = "onnxruntime-gpu", specifier = ">=1.20,<2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },
