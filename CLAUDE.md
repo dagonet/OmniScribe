@@ -7,8 +7,8 @@
 At the start of every session:
 1. Assume the **PO role** — orchestrate planning, sprints, and merges (see *Workflow TL;DR* and *Spawn-Prompt Binding Table* below). Do **NOT** `Read AGENT_TEAM.md` up front (850+ lines). Load it on-demand only when (a) first spawning agents in a sprint, (b) invoking the Plan Challenge Protocol, or (c) the user asks about merge/escalation rules.
 2. Read `PROJECT_CONTEXT.md` — load build commands and workflow config
-3. **Check Open Brain** — use `thoughts_search` or `thoughts_recent` to load context relevant to the current project. Throughout the session, capture durable knowledge (decisions, insights, bug root causes) via `thoughts_capture` without asking permission.
-4. Present current state (from MEMORY.md) and ask what to work on
+3. **Check Open Brain** — use `thoughts_search` or `thoughts_recent` to load context relevant to the current project. Throughout the session, capture durable knowledge (decisions, insights, bug root causes) via `thoughts_capture` without asking permission. For synthesis-style questions on a known topic, prefer `wiki_get` first; fall back to `thoughts_search` if the response is marked stale (`stale_since_n_thoughts > 5`, `open_contradictions_count > 0`, or `compiled_at` older than 7 days).
+4. Present current state (from MEMORY.md) and ask what to work on. Check `git_status` and `git_worktree_list` — surface and resolve any stale branches, leftover worktrees, or uncommitted changes from prior tasks before starting new work
 5. **Enter plan mode** for any non-trivial task (T2+). The PO MUST use `EnterPlanMode` before implementation. T1 trivial fixes (< 10 lines, config/style) may skip plan mode.
 
 ## Workflow TL;DR
@@ -89,26 +89,37 @@ Skip capture for routine outcomes ("no issues found", "all tests pass").
 
 ---
 
-## Superpowers Skills — When to Invoke
+## Superpowers Skills — MUST Invoke Before Responding
 
-Requires the [superpowers plugin](https://github.com/anthropics/claude-plugins-official/tree/main/superpowers). Invoke via the Skill tool.
+Requires the [superpowers plugin](https://github.com/anthropics/claude-plugins-official/tree/main/superpowers). Templates ship `superpowers` enabled by default in `.claude/settings.json` (`enabledPlugins`). Invoke via the Skill tool.
 
-### Solo PO trigger matrix
+### Hard triggers (MUST)
 
-| Trigger (user action / session event) | Skill to invoke |
-|---|---|
-| User describes a new feature or design idea | `superpowers:brainstorming` |
-| Design is accepted, need to break into tasks | `superpowers:writing-plans` |
-| Plan approved, starting implementation | `superpowers:executing-plans` |
-| Writing any new code (feature or fix) | `karpathy-guidelines` + `superpowers:test-driven-development` |
-| User reports a bug, test failure, or unexpected behavior | `superpowers:systematic-debugging` |
-| Before claiming work complete or opening a PR | `superpowers:verification-before-completion` |
-| Requesting review from the code-reviewer agent | `superpowers:requesting-code-review` |
-| Digesting code review findings | `superpowers:receiving-code-review` |
+These are not optional. If the trigger fires, invoke the named skill BEFORE generating any other response:
+
+- BEFORE responding to a new feature or design idea → invoke `superpowers:brainstorming`.
+- BEFORE responding to a bug report, test failure, or unexpected behavior → invoke `superpowers:systematic-debugging`.
+- BEFORE claiming work complete or opening a PR → invoke `superpowers:verification-before-completion`.
+
+### Strong triggers (SHOULD)
+
+Apply unless plan mode or another skill already covers the same ground:
+
+- Multi-step implementation about to start → invoke `superpowers:writing-plans`, then `superpowers:executing-plans` once the plan is approved.
+- Writing production code → invoke `superpowers:test-driven-development` together with `karpathy-guidelines`.
+- Requesting / digesting code review → `superpowers:requesting-code-review` / `superpowers:receiving-code-review`.
 
 **Chain note:** `writing-plans` produces a plan. The **Plan Challenge Protocol** in `AGENT_TEAM.md` validates any plan (regardless of source) before execution — independent gate, not a side-effect of `writing-plans`.
 
 **When spawning agents:** see `AGENT_TEAM.md` → *Spawn-Prompt Binding Table* for the skills each subagent type must invoke. The `hooks/require-skills-block.sh` PreToolUse hook mechanically enforces this — spawns of bound `subagent_type` values without a `## Required Skills` block in the prompt are blocked with exit 2.
+
+### Plugin defaults
+
+Templates enable two plugins by default in `.claude/settings.json`:
+- `superpowers@claude-plugins-official` — required for the triggers above.
+- `code-review@claude-plugins-official` — aligns with the `code-reviewer` agent.
+
+Opt-in (add to `enabledPlugins` if needed): `feature-dev`, `code-simplifier`, `claude-md-management`, `frontend-design`, `ralph-loop`, `context-mode`, `skill-creator`, `claude-code-setup`, `context7`.
 
 ### Meta skills (no explicit trigger)
 
@@ -122,7 +133,8 @@ Requires the [superpowers plugin](https://github.com/anthropics/claude-plugins-o
 - **Implement, don't suggest** — make changes directly, infer user intent from context
 - **Read before editing** — always open referenced files first, follow existing style
 - **Summarize tool work** — provide a quick summary after completing tasks
-- **Clean up temp files** — delete helpers/scripts when done, keep only final code
+- **Clean finish** — after completing work: all changes committed, PR merged, worktree removed, branch deleted. Delete temp helpers/scripts, keep only final code. Any leftover artifact that can't be cleaned up must be reported to the user with a reason
+- **Update docs with code** — when changing behavior, APIs, config, or setup, update affected docs (README, CLAUDE.md, PROJECT_CONTEXT.md) in the same commit
 - **Tests** — write general solutions, don't hard-code test values. If tests look wrong, say so
 - **Re-plan on failure** — if an approach isn't working after a reasonable attempt, STOP and re-enter plan mode. Don't push through a failing strategy
 - **Subagent discipline** — offload research, exploration, and parallel analysis to subagents to keep the main context window clean. One focused task per subagent
@@ -207,14 +219,22 @@ Before marking any commit/push complete, verify:
 
 # Compact Instructions
 
-When compacting conversation context, preserve the following:
+When compacting conversation context, preserve **decisions and rationale first**. File paths and code excerpts are NOT preserved by default — they are only kept when load-bearing for the next task per the categories below.
 
-- **Active work state**: current sprint number, issue numbers, worktree paths, branch names, merge progress
-- **In-flight agent work**: which agents are running, their assigned issues, and current phase (dev/review/test)
-- **Merge sequence**: which PRs are ready, which are blocked, and merge ordering constraints
-- **Recent code changes**: file paths modified, key architectural decisions made this session
-- **Bug investigation findings**: root causes identified, fix approaches chosen, files involved
+Always preserve:
+- **Decisions made this session**: architectural choices, design trade-offs, rejected alternatives, why each chosen
+- **Bug root causes**: what was actually broken (not the symptom), and why the chosen fix addresses it
+- **Active work state**: current sprint number, issue numbers, branch names, merge progress
+- **In-flight agent work**: which agents are running, their assigned issues, current phase (dev/review/test)
+- **Merge sequence**: which PRs are ready, which are blocked, merge ordering constraints
 - **Team configuration**: team name, active teammates and their roles
+
+Preserve file paths ONLY when one of these load-bearing categories applies:
+1. **Work-in-progress**: files actively being modified, not yet committed.
+2. **Merge conflicts**: files with unresolved conflicts.
+3. **Post-merge verification pending**: files touched by a recent merge whose validation is not done.
+
+Outside those three categories, drop file paths and code excerpts. The diff and git history are the source of truth, not the compact summary.
 
 Discard freely:
 - Verbose tool outputs (build logs, full diffs, test output)

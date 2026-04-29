@@ -1,4 +1,4 @@
-﻿# Claude Code Agent Team Setup
+# Claude Code Agent Team Setup
 
 ## Version
 

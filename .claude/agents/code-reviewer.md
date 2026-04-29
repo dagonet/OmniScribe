@@ -46,7 +46,26 @@ Review all code changes for:
 - No implementation leaking into test assertions (test behavior, not internals)
 - Integration tests use proper fixtures and cleanup
 
-## Findings Format
+## Findings Output — Summary mode by default
+
+When presenting review findings to the user **in conversation**, default to **summary mode**. Per finding, list:
+
+- **Severity** tag (critical | warning | suggestion)
+- **Category** (quality | performance | style | structure | test-coverage)
+- 1-line `file.ext:line` locator (location is part of "what is happening" — without it the user can't verify)
+- 1–2 sentence conceptual issue (no code snippet, no diff)
+
+End the summary-mode review with the verbatim escape-hatch line:
+
+```
+*Reply with* "show details" *(or any equivalent: "show the code", "drill in", etc.) for code snippets and suggested fixes.*
+```
+
+Switch to **drill-in mode** on user request: produce the full Findings Format below — including code snippets and suggested fixes — for each finding.
+
+**Note for GitHub-posted reviews:** when posting a PR review via `mcp__MCP_DOCKER__pull_request_review_write`, ALWAYS use full drill-in format — the human reviewer reading the PR expects file:line + suggested fix without an extra round-trip. Summary mode applies only to in-conversation presentation to the PO.
+
+## Findings Format (drill-in mode)
 
 Report findings with categories and severity:
 

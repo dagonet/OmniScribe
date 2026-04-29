@@ -2,7 +2,7 @@
   "version": 2,
   "variant": "python",
   "templateRepo": "/g/git/claude-code-toolkit",
-  "lastSynced": "36f784f",
+  "lastSynced": "788902d",
   "placeholders": {
     "PROJECT_NAME": "OmniScribe",
     "PROJECT_NAME_LOWER": "omniscribe",
@@ -16,15 +16,15 @@
   },
   "files": {
     ".claude/agents/architect.md": {
-      "templateHash": "09d52dec7c0c7f0d3f127fd8c56cee348843d9edda3ce8799079dbf554d83646",
-      "templateRawHash": "09d52dec7c0c7f0d3f127fd8c56cee348843d9edda3ce8799079dbf554d83646",
-      "localHash": "09d52dec7c0c7f0d3f127fd8c56cee348843d9edda3ce8799079dbf554d83646",
+      "templateHash": "18249ce60e44fa5c230cebf815e2acbfc6de1c6b7b8883c518aeb3cfb6757209",
+      "templateRawHash": "18249ce60e44fa5c230cebf815e2acbfc6de1c6b7b8883c518aeb3cfb6757209",
+      "localHash": "18249ce60e44fa5c230cebf815e2acbfc6de1c6b7b8883c518aeb3cfb6757209",
       "locallyModified": false
     },
     ".claude/agents/code-reviewer.md": {
-      "templateHash": "58e20ee931b6c46249e4a6c7c07376dbbfb84505ca996d93433f94a974a34fc5",
-      "templateRawHash": "58e20ee931b6c46249e4a6c7c07376dbbfb84505ca996d93433f94a974a34fc5",
-      "localHash": "58e20ee931b6c46249e4a6c7c07376dbbfb84505ca996d93433f94a974a34fc5",
+      "templateHash": "42e548d02f47d1c9f5d88c482381f91fc1cd7a30e4bf7b8ee76f26ee99f89280",
+      "templateRawHash": "42e548d02f47d1c9f5d88c482381f91fc1cd7a30e4bf7b8ee76f26ee99f89280",
+      "localHash": "42e548d02f47d1c9f5d88c482381f91fc1cd7a30e4bf7b8ee76f26ee99f89280",
       "locallyModified": false
     },
     ".claude/agents/coder.md": {
@@ -46,9 +46,9 @@
       "locallyModified": false
     },
     ".claude/agents/requirements-engineer.md": {
-      "templateHash": "ba18ec7c243348dfacae0a62e5f3edce7d3813bce65caed1908bc488c3662c0d",
-      "templateRawHash": "ba18ec7c243348dfacae0a62e5f3edce7d3813bce65caed1908bc488c3662c0d",
-      "localHash": "ba18ec7c243348dfacae0a62e5f3edce7d3813bce65caed1908bc488c3662c0d",
+      "templateHash": "9109cf2a82245debd61c577f2a76e69b2ad536bf87c1d3ae32cb040099e73ebf",
+      "templateRawHash": "9109cf2a82245debd61c577f2a76e69b2ad536bf87c1d3ae32cb040099e73ebf",
+      "localHash": "9109cf2a82245debd61c577f2a76e69b2ad536bf87c1d3ae32cb040099e73ebf",
       "locallyModified": false
     },
     ".claude/agents/test-writer.md": {
@@ -64,9 +64,9 @@
       "locallyModified": false
     },
     ".claude/settings.json": {
-      "templateHash": "a11662e989d11feade2a119046e0b609a87291925572ab963f8a0daeec8c17b2",
-      "templateRawHash": "a11662e989d11feade2a119046e0b609a87291925572ab963f8a0daeec8c17b2",
-      "localHash": "a11662e989d11feade2a119046e0b609a87291925572ab963f8a0daeec8c17b2",
+      "templateHash": "067e74e59fa3bbb8efeffcea3660cce0013b81ede7b09009fa013d1d059a3209",
+      "templateRawHash": "067e74e59fa3bbb8efeffcea3660cce0013b81ede7b09009fa013d1d059a3209",
+      "localHash": "067e74e59fa3bbb8efeffcea3660cce0013b81ede7b09009fa013d1d059a3209",
       "locallyModified": false
     },
     ".editorconfig": {
@@ -82,16 +82,15 @@
       "locallyModified": false
     },
     "CLAUDE.local.md": {
-      "templateHash": "e87c6f0a2e9699c00e2a5d55cbf0a05d0b284f62a332644da32809cfdafea465",
-      "templateRawHash": "e87c6f0a2e9699c00e2a5d55cbf0a05d0b284f62a332644da32809cfdafea465",
-      "localHash": "c149e8ce3311a0ca1fa10778e9d5b61990467d342503495d6d3c43dde66c8006",
-      "locallyModified": true,
-      "reason": "Project-specific MCP rules appended"
+      "templateHash": "ee91f28fbfafae361b632bb28c389c889d6fcef79ad1a89a296ee44f9b8d3af6",
+      "templateRawHash": "ee91f28fbfafae361b632bb28c389c889d6fcef79ad1a89a296ee44f9b8d3af6",
+      "localHash": "ee91f28fbfafae361b632bb28c389c889d6fcef79ad1a89a296ee44f9b8d3af6",
+      "locallyModified": false
     },
     "CLAUDE.md": {
-      "templateHash": "b72acf47ced81c43380686102a0e890e1e1d8926d34f3a44b2de7437ab927fe7",
-      "templateRawHash": "9755930cdcb27b261083f26c24d21e723f8c55c576ab8890a7f5f62bc099f944",
-      "localHash": "b72acf47ced81c43380686102a0e890e1e1d8926d34f3a44b2de7437ab927fe7",
+      "templateHash": "8bb3e77387f2cfa33234ba7f09821ad7c04e8357046b8b8ead97cf6da9c0d61f",
+      "templateRawHash": "ace448401707e4677056ccab55fde338b628a9299940e3d5ccaa82c19874ca3c",
+      "localHash": "8bb3e77387f2cfa33234ba7f09821ad7c04e8357046b8b8ead97cf6da9c0d61f",
       "locallyModified": false
     },
     "PROJECT_CONTEXT.md": {
