@@ -60,11 +60,8 @@ def _register_nvidia_dll_dirs() -> None:
 
         # Step 2 — preload cublas/cudnn/cufft and their transitive deps.
         # Order matters: cudart must load first (cublas links against it),
-        # cudnn must load after cublas (cudnn links against cublas), and
-        # cufft is independent but kept last so the order matches the
-        # documented preload sequence.  cufft is required by
-        # onnxruntime-gpu's CUDAExecutionProvider (used by RapidOCR);
-        # without it, ORT silently falls back to CPU.
+        # then cuDNN (stub first, then sub-libs — see block below for the why),
+        # then cufft (independent, kept last for documented order).
         _preload = bin_dirs.get("cuda_runtime", Path()) / "cudart64_12.dll"
         if _preload.exists():
             with contextlib.suppress(OSError):
@@ -77,11 +74,30 @@ def _register_nvidia_dll_dirs() -> None:
                 ctypes.CDLL(str(_preload))
                 n_preloaded += 1
 
-        _preload = bin_dirs.get("cudnn", Path()) / "cudnn64_9.dll"
-        if _preload.exists():
-            with contextlib.suppress(OSError):
-                ctypes.CDLL(str(_preload))
-                n_preloaded += 1
+        # cuDNN 9 split the API across multiple DLLs. cudnn64_9.dll is the
+        # loader stub; cudnnCreate and friends live in cudnn_ops64_9.dll,
+        # cudnn_cnn64_9.dll, etc. ORT's CUDAExecutionProvider does
+        # GetProcAddress("cudnnCreate") on the resolved handle and needs
+        # all sub-libs already resident, otherwise it falls back to CPU.
+        # Walrus-gate on key presence: bin_dirs.get("cudnn", Path()).is_dir()
+        # would return True for the empty Path (== cwd) and silently glob
+        # cudnn*.dll in cwd if cudnn isn't installed. Walrus avoids that.
+        if cudnn_dir := bin_dirs.get("cudnn"):
+            # Stub first so its plugin sub-libs resolve against an already-mapped image.
+            _stub = cudnn_dir / "cudnn64_9.dll"
+            if _stub.exists():
+                try:
+                    ctypes.CDLL(str(_stub))
+                    n_preloaded += 1
+                except OSError as e:
+                    logger.debug("cudnn stub preload failed: %s (%s)", _stub.name, e)
+            # glob with underscore prefix only — avoids double-loading the stub.
+            for cudnn_dll in sorted(cudnn_dir.glob("cudnn_*.dll")):
+                try:
+                    ctypes.CDLL(str(cudnn_dll))
+                    n_preloaded += 1
+                except OSError as e:
+                    logger.debug("cudnn sub-lib preload failed: %s (%s)", cudnn_dll.name, e)
 
         _preload = bin_dirs.get("cufft", Path()) / "cufft64_11.dll"
         if _preload.exists():
@@ -89,6 +105,8 @@ def _register_nvidia_dll_dirs() -> None:
                 ctypes.CDLL(str(_preload))
                 n_preloaded += 1
 
+    # expect 12 on a full Windows install; lower means a sub-lib failed
+    # (look for "preload failed" debug lines emitted by the cuDNN block).
     logger.debug(
         "nvidia DLL shim: registered %d dir(s), preloaded %d DLL(s)",
         n_dirs,
