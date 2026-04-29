@@ -42,12 +42,13 @@ def test_shim_handles_missing_nvidia_dir(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_shim_preloads_when_dlls_present(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """With a fake nvidia tree on sys.path, all three DLLs preload in order."""
+    """With a fake nvidia tree on sys.path, all four DLLs preload in order."""
     nvidia = tmp_path / "nvidia"
     cudart = nvidia / "cuda_runtime" / "bin" / "cudart64_12.dll"
     cublas = nvidia / "cublas" / "bin" / "cublas64_12.dll"
     cudnn = nvidia / "cudnn" / "bin" / "cudnn64_9.dll"
-    for dll in (cudart, cublas, cudnn):
+    cufft = nvidia / "cufft" / "bin" / "cufft64_11.dll"
+    for dll in (cudart, cublas, cudnn, cufft):
         dll.parent.mkdir(parents=True, exist_ok=True)
         dll.touch()
 
@@ -60,14 +61,16 @@ def test_shim_preloads_when_dlls_present(monkeypatch: pytest.MonkeyPatch, tmp_pa
     ):
         _register_nvidia_dll_dirs()
 
-    # Three bin/ dirs registered.
-    assert mock_add.call_count == 3
-    # Three DLLs preloaded in the documented order: cudart -> cublas -> cudnn.
-    assert mock_cdll.call_count == 3
+    # Four bin/ dirs registered.
+    assert mock_add.call_count == 4
+    # Four DLLs preloaded in the documented order:
+    # cudart -> cublas -> cudnn -> cufft.
+    assert mock_cdll.call_count == 4
     preloaded = [call.args[0] for call in mock_cdll.call_args_list]
     assert preloaded[0].endswith("cudart64_12.dll")
     assert preloaded[1].endswith("cublas64_12.dll")
     assert preloaded[2].endswith("cudnn64_9.dll")
+    assert preloaded[3].endswith("cufft64_11.dll")
 
 
 def test_shim_oserror_from_add_dll_directory_does_not_break_preload(
