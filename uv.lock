@@ -477,6 +477,44 @@ wheels = [
 ]
 
 [[package]]
+name = "nvidia-cublas-cu12"
+version = "12.9.2.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nvidia-cuda-nvrtc-cu12" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/20/e2/fc9a0e985249d873150276d5afb02e39a66817fedbf1a385724393e505ed/nvidia_cublas_cu12-12.9.2.10-py3-none-win_amd64.whl", hash = "sha256:623f43027d40d44ceadf0043f002bd25cf353e8f13ce90b9a87057019f560661", size = 553162896, upload-time = "2026-04-08T18:53:10.035Z" },
+]
+
+[[package]]
+name = "nvidia-cuda-nvrtc-cu12"
+version = "12.9.86"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/52/de/823919be3b9d0ccbf1f784035423c5f18f4267fb0123558d58b813c6ec86/nvidia_cuda_nvrtc_cu12-12.9.86-py3-none-win_amd64.whl", hash = "sha256:72972ebdcf504d69462d3bcd67e7b81edd25d0fb85a2c46d3ea3517666636349", size = 76408187, upload-time = "2025-06-05T20:12:27.819Z" },
+]
+
+[[package]]
+name = "nvidia-cuda-runtime-cu12"
+version = "12.9.79"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/df/e7c3a360be4f7b93cee39271b792669baeb3846c58a4df6dfcf187a7ffab/nvidia_cuda_runtime_cu12-12.9.79-py3-none-win_amd64.whl", hash = "sha256:8e018af8fa02363876860388bd10ccb89eb9ab8fb0aa749aaf58430a9f7c4891", size = 3591604, upload-time = "2025-06-05T20:11:17.036Z" },
+]
+
+[[package]]
+name = "nvidia-cudnn-cu12"
+version = "9.21.1.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "nvidia-cublas-cu12" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/a5/91672bf58b23479f89744d02ae918f8d8cc940a97e2548d44c19b786d681/nvidia_cudnn_cu12-9.21.1.3-py3-none-win_amd64.whl", hash = "sha256:4e87cb118a52d7cb4a758d1dc47652975bb81e52f230febd361eba04d0204799", size = 686950248, upload-time = "2026-04-21T15:55:20.889Z" },
+]
+
+[[package]]
 name = "ollama"
 version = "0.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -509,6 +547,9 @@ source = { editable = "." }
 dependencies = [
     { name = "faster-whisper" },
     { name = "numpy" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "sys_platform == 'win32'" },
+    { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'" },
     { name = "onnxruntime-gpu" },
     { name = "pydantic-settings" },
     { name = "rapidfuzz" },
@@ -534,6 +575,9 @@ requires-dist = [
     { name = "faster-whisper", specifier = ">=1.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "numpy", specifier = ">=1.26,<3.0" },
+    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
+    { name = "nvidia-cuda-runtime-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
+    { name = "nvidia-cudnn-cu12", marker = "sys_platform == 'win32'", specifier = ">=9,<10" },
     { name = "ollama", marker = "extra == 'llm'", specifier = ">=0.4" },
     { name = "onnxruntime-gpu", specifier = ">=1.20,<2.0" },
     { name = "pydantic-settings", specifier = ">=2.0" },

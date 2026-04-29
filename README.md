@@ -137,6 +137,8 @@ merge threshold.
 - NVIDIA GPU with CUDA 12.x (recommended, 8+ GB VRAM). Verify: `python -c "import onnxruntime as ort; print(ort.get_available_providers())"` — should list `CUDAExecutionProvider`
 - ffmpeg
 
+On Windows, CUDA 12 runtime libraries (cuda_runtime, cublas, cudnn) are bundled via pip — no separate CUDA toolkit install required. A system CUDA install, if present, is not used.
+
 ## Status
 
 🚧 **Under active development** — See [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md) for the roadmap.
