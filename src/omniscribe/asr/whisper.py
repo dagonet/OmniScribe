@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+logger = logging.getLogger(__name__)
+
 # ``os.add_dll_directory()`` returns a cookie; the directory is removed from
 # the DLL search path when the cookie is garbage-collected.  Keep references
 # alive for the lifetime of the process so CTranslate2 can find cublas64_12.dll
@@ -53,8 +55,8 @@ def _register_nvidia_dll_dirs() -> None:
             if bin_dir.is_dir():
                 with contextlib.suppress(OSError):
                     _nvidia_dll_cookies.append(os.add_dll_directory(str(bin_dir)))
+                    n_dirs += 1
                 bin_dirs[child.name] = bin_dir
-                n_dirs += 1
 
         # Step 2 — preload cublas/cudnn and their transitive deps.  Order
         # matters: cudart must load first (cublas links against it), and
@@ -77,7 +79,7 @@ def _register_nvidia_dll_dirs() -> None:
                 ctypes.CDLL(str(_preload))
                 n_preloaded += 1
 
-    logging.getLogger(__name__).debug(
+    logger.debug(
         "nvidia DLL shim: registered %d dir(s), preloaded %d DLL(s)",
         n_dirs,
         n_preloaded,
@@ -95,8 +97,6 @@ from omniscribe.output import TranscriptSegment  # noqa: E402 (must follow DLL r
 
 if TYPE_CHECKING:
     from omniscribe.config import OmniScribeConfig
-
-logger = logging.getLogger(__name__)
 
 
 class WhisperTranscriber:
