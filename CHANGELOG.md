@@ -5,6 +5,16 @@ All notable changes to OmniScribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Batch transcription** (`omniscribe transcribe-many`). Reads sources (one URL or local file path per line) from a text file, processes each via the existing single-video pipeline, writes per-input outputs into a target directory, and resumes on failure via `{output_dir}/.omniscribe-batch-state.json`. Failures are recorded with the error text and skipped; re-running the same command picks up `pending` and `failed` items. Sequential execution — no concurrent transcribes (GPU contention).
+
+### Changed
+
+- Internal: `cli.transcribe()`'s orchestration body extracted into a module-level `process_single_video()` helper so the batch command can reuse it. No behavior change for the single-video path.
+
 ## [0.1.1] - 2026-04-30
 
 ### Fixed
