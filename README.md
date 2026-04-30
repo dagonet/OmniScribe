@@ -119,18 +119,6 @@ segments. The noise sits alongside them.
   low-confidence partial detections, at the cost of also missing some real
   text.
 
-A planned post-0.1.0 sprint will add caption-region masking and/or fuzzy
-frequency filtering to cut this noise floor without sacrificing real text
-recall.
-
-### `[BOTH]` emission uses inclusive boundary overlap
-
-The cross-source merge in `merge_channels` uses inclusive temporal overlap
-(`speech.start <= ocr.end AND ocr.start <= speech.end`). Touching boundaries
-and point-timed OCR segments (single-frame `start == end`) landing on a
-SPEECH boundary now correctly emit `[BOTH]` when text similarity meets the
-merge threshold.
-
 ## Requirements
 
 - Python 3.11 or 3.12
