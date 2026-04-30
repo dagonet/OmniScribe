@@ -5,6 +5,24 @@ All notable changes to OmniScribe will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-04-30
+
+### Fixed
+
+- **Windows GPU now works without a system CUDA install** (Sprints 7.2–7.4, PRs #22–#24). `nvidia-cuda-runtime-cu12`, `nvidia-cublas-cu12`, `nvidia-cudnn-cu12`, and `nvidia-cufft-cu12` are now bundled on Windows via pip (gated `sys_platform == 'win32'`). A new module-import shim in `src/omniscribe/asr/whisper.py` registers each `nvidia/*/bin` directory and ctypes-preloads `cudart64_12.dll → cublas64_12.dll → cudnn64_9.dll + all cuDNN sub-libraries (glob "cudnn_*.dll") → cufft64_11.dll`, so both faster-whisper / CTranslate2 and onnxruntime-gpu's `CUDAExecutionProvider` (used by RapidOCR) find their dependencies at inference time. Smoke-validated end-to-end on a 41-min video at ~2.7× realtime.
+- **Inclusive merge boundary for `[BOTH]` segments** (`681fa03`). `merge_channels` previously used strict `<` overlap; the loosened `≤` boundary correctly emits a single `[BOTH]` segment when speech and OCR end at the same timestamp.
+- **LLM cleanup robustness** (`681fa03`). Added a model pre-warm step, carriage-return stripping in cleaned output, and configurable `keep_alive` for the Ollama client.
+- **typer dep cleanup** (`0e2ab46`, PR #19). Replaced the deprecated `typer[all]` extra with `typer>=0.13`, which now bundles `rich` and `shellingham` as direct deps.
+
+### Added
+
+- **Caption-region masking + fuzzy frequency filter** (Sprint 7.1, PR #20). New `src/omniscribe/ocr/_text_match.py` module with `_canonical_key` / `_fuzzy_match` primitives shared between the cross-frame deduplicator and UI filter. Platform profiles for TikTok and Instagram now carry `RelativeRect` caption-band coordinates so OCR-side noise (rolling auto-captions, recurring SUBSCRIBE prompts) gets zeroed before detection. Default `fuzzy_threshold=90` (rapidfuzz `WRatio`).
+
+### Changed
+
+- **DeepWiki badge added to README** (`d9a98e6`).
+- **Template sync** (`898ed1b`). Pulled upstream agent / settings / CLAUDE.md updates from the `claude-code-toolkit` template (`f229832 → 788902d`). No user-facing behavior change.
+
 ## [0.1.0] - 2026-04-25
 
 First public alpha. Core pipeline ships: video acquisition (yt-dlp) →
@@ -71,4 +89,5 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.1.1]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.1
 [0.1.0]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.0

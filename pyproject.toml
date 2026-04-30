@@ -1,6 +1,6 @@
 [project]
 name = "omniscribe"
-version = "0.1.0"
+version = "0.1.1"
 description = "Extract complete video transcripts — speech AND on-screen text — from TikTok, YouTube, Instagram and more."
 readme = "README.md"
 license = "MIT"
