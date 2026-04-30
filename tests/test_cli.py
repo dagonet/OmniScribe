@@ -1081,3 +1081,316 @@ def test_asr_cleanup_error_exits_nonzero(tmp_path: Path, monkeypatch) -> None:
 
     assert result.exit_code == 1
     assert "Ollama not reachable" in result.output
+
+
+# ── Sprint 5.4: transcribe-many (batch) ───────────────────────────────────
+
+
+def _write_urls(tmp_path: Path, urls: list[str]) -> Path:
+    p = tmp_path / "urls.txt"
+    p.write_text("\n".join(urls) + ("\n" if urls else ""), encoding="utf-8")
+    return p
+
+
+def test_transcribe_many_empty_file(tmp_path: Path, monkeypatch) -> None:
+    """Empty URL list → exit 0, no items processed, no state file written."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    urls_file = _write_urls(tmp_path, [])
+    out_dir = tmp_path / "out"
+
+    with patch("omniscribe.cli.process_single_video") as mock_proc:
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe-many",
+                str(urls_file),
+                "--output-dir",
+                str(out_dir),
+                "--format",
+                "md",
+            ],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_proc.assert_not_called()
+    state_file = out_dir / ".omniscribe-batch-state.json"
+    assert not state_file.exists()
+
+
+def test_transcribe_many_unwritable_output_dir_fails_fast(tmp_path: Path, monkeypatch) -> None:
+    """Read-only --output-dir → exit 1, process_single_video never called."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    urls_file = _write_urls(tmp_path, ["https://a/1"])
+    out_dir = tmp_path / "out"
+
+    # Make the probe-write fail (cross-platform: monkeypatch Path.write_bytes
+    # on the probe path).
+    real_write_bytes = Path.write_bytes
+
+    def _maybe_deny(self: Path, data: bytes) -> int:
+        if self.name == ".omniscribe-write-probe":
+            raise PermissionError("read-only")
+        return real_write_bytes(self, data)
+
+    monkeypatch.setattr(Path, "write_bytes", _maybe_deny)
+
+    with patch("omniscribe.cli.process_single_video") as mock_proc:
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe-many",
+                str(urls_file),
+                "--output-dir",
+                str(out_dir),
+                "--format",
+                "md",
+            ],
+            catch_exceptions=False,
+        )
+
+    assert result.exit_code == 1
+    assert "not writable" in result.output
+    mock_proc.assert_not_called()
+
+
+def test_transcribe_many_all_succeed(tmp_path: Path, monkeypatch) -> None:
+    """Three URLs, all succeed → state shows three ``done``."""
+    import json as _json
+
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    urls = ["https://a/1", "https://a/2", "https://a/3"]
+    urls_file = _write_urls(tmp_path, urls)
+    out_dir = tmp_path / "out"
+
+    # Make compute_output_path deterministic: derive stems from the URL tail.
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    with (
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    assert mock_proc.call_count == 3
+    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    assert [it["status"] for it in state["items"]] == ["done", "done", "done"]
+    assert [it["source"] for it in state["items"]] == urls
+
+
+def test_transcribe_many_mixed_valid_invalid(tmp_path: Path, monkeypatch) -> None:
+    """Two succeed, one raises OmniScribeError → exit 0, failed item recorded."""
+    import json as _json
+
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    urls = ["https://a/1", "https://a/2", "https://a/3"]
+    urls_file = _write_urls(tmp_path, urls)
+    out_dir = tmp_path / "out"
+
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    def _fake_proc(source, *_a, **_kw):
+        if source == "https://a/2":
+            raise OmniScribeError("Video unavailable: this video is private")
+
+    with (
+        patch("omniscribe.cli.process_single_video", side_effect=_fake_proc),
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    # At least one item succeeded → exit 0.
+    assert result.exit_code == 0, result.output
+    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    statuses = {it["source"]: it["status"] for it in state["items"]}
+    assert statuses == {"https://a/1": "done", "https://a/2": "failed", "https://a/3": "done"}
+    failed = next(it for it in state["items"] if it["source"] == "https://a/2")
+    assert "Video unavailable" in failed["error"]
+
+
+def test_transcribe_many_resume_skips_done(tmp_path: Path, monkeypatch) -> None:
+    """Pre-populated state with one ``done`` item → that item is skipped."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    urls = ["https://a/1", "https://a/2"]
+    urls_file = _write_urls(tmp_path, urls)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    state_path = out_dir / ".omniscribe-batch-state.json"
+    state_path.write_text(
+        "{\n"
+        '  "version": 1,\n'
+        '  "started_at": "2026-04-30T12:00:00+00:00",\n'
+        f'  "input_file": "{urls_file.as_posix()}",\n'
+        f'  "output_dir": "{out_dir.as_posix()}",\n'
+        '  "format": "md",\n'
+        '  "items": [\n'
+        f'    {{"source": "https://a/1", "status": "done", "output_path": "{(out_dir / "1.md").as_posix()}", "error": null}},\n'
+        '    {"source": "https://a/2", "status": "pending", "output_path": null, "error": null}\n'
+        "  ]\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    with (
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    # Only the pending item should have been processed.
+    sources_called = [c.args[0] for c in mock_proc.call_args_list]
+    assert sources_called == ["https://a/2"]
+
+
+def test_transcribe_many_resume_retries_failed_and_pending(tmp_path: Path, monkeypatch) -> None:
+    """Pre-populated state with one ``failed`` + one ``pending`` → both retried."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    urls = ["https://a/1", "https://a/2"]
+    urls_file = _write_urls(tmp_path, urls)
+    out_dir = tmp_path / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    state_path = out_dir / ".omniscribe-batch-state.json"
+    state_path.write_text(
+        "{\n"
+        '  "version": 1,\n'
+        '  "started_at": "2026-04-30T12:00:00+00:00",\n'
+        f'  "input_file": "{urls_file.as_posix()}",\n'
+        f'  "output_dir": "{out_dir.as_posix()}",\n'
+        '  "format": "md",\n'
+        '  "items": [\n'
+        '    {"source": "https://a/1", "status": "failed", "output_path": null, "error": "old"},\n'
+        '    {"source": "https://a/2", "status": "pending", "output_path": null, "error": null}\n'
+        "  ]\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    with (
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    sources_called = sorted(c.args[0] for c in mock_proc.call_args_list)
+    assert sources_called == ["https://a/1", "https://a/2"]
+
+
+def test_transcribe_many_resume_against_edited_list_drops_orphans_and_appends_new(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Drop orphan A, skip done B, retry failed C, append new D as pending."""
+    import json as _json
+
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    out_dir = tmp_path / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # Pre-populate state with A done, B done, C failed.
+    state_path = out_dir / ".omniscribe-batch-state.json"
+    state_path.write_text(
+        "{\n"
+        '  "version": 1,\n'
+        '  "started_at": "2026-04-30T12:00:00+00:00",\n'
+        f'  "input_file": "{(tmp_path / "old.txt").as_posix()}",\n'
+        f'  "output_dir": "{out_dir.as_posix()}",\n'
+        '  "format": "md",\n'
+        '  "items": [\n'
+        f'    {{"source": "A", "status": "done", "output_path": "{(out_dir / "A.md").as_posix()}", "error": null}},\n'
+        f'    {{"source": "B", "status": "done", "output_path": "{(out_dir / "B.md").as_posix()}", "error": null}},\n'
+        '    {"source": "C", "status": "failed", "output_path": null, "error": "x"}\n'
+        "  ]\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    # New URL list: B, C, D (A dropped, D added).
+    urls_file = _write_urls(tmp_path, ["B", "C", "D"])
+
+    def _fake_compute(source, output_dir, ext, taken):
+        return output_dir / f"{source}{ext}"
+
+    with (
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    sources_called = sorted(c.args[0] for c in mock_proc.call_args_list)
+    # B is done → skipped. C (failed) and D (new pending) processed.
+    assert sources_called == ["C", "D"]
+
+    state = _json.loads(state_path.read_text(encoding="utf-8"))
+    sources = [it["source"] for it in state["items"]]
+    assert sources == ["B", "C", "D"]  # A dropped, order matches list.
+
+
+def test_transcribe_many_ctrl_c_mid_item_keeps_state_valid(tmp_path: Path, monkeypatch) -> None:
+    """KeyboardInterrupt mid-batch → state file valid, in-flight item ``pending``."""
+    import json as _json
+
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    urls = ["https://a/1", "https://a/2", "https://a/3"]
+    urls_file = _write_urls(tmp_path, urls)
+    out_dir = tmp_path / "out"
+
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    def _fake_proc(source, *_a, **_kw):
+        if source == "https://a/2":
+            raise KeyboardInterrupt
+
+    with (
+        patch("omniscribe.cli.process_single_video", side_effect=_fake_proc),
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+            catch_exceptions=False,
+        )
+
+    # Non-zero exit on Ctrl+C.
+    assert result.exit_code != 0
+    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    statuses = {it["source"]: it["status"] for it in state["items"]}
+    # First item completed; second was persisted as pending before the call;
+    # third never started.
+    assert statuses == {
+        "https://a/1": "done",
+        "https://a/2": "pending",
+        "https://a/3": "pending",
+    }

@@ -61,7 +61,14 @@ omniscribe transcribe ./video.mp4 --ocr --llm-cleanup --output transcript.json
 
 # LLM punctuation cleanup on speech segments (opt-in; same extras + Ollama)
 omniscribe transcribe ./video.mp4 --llm-cleanup --asr-cleanup --output transcript.md
+
+# Batch — one URL per line in urls.txt; outputs land in transcripts/
+omniscribe transcribe-many urls.txt --output-dir transcripts/ --format md
 ```
+
+Re-running `transcribe-many` with the same `--output-dir` resumes from
+`{output_dir}/.omniscribe-batch-state.json` — completed items are skipped, and
+`pending`/`failed` items are re-attempted. Delete the state file to start fresh.
 
 ## Supported Platforms
 
