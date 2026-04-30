@@ -266,4 +266,34 @@ Schema-version bump (`version: 2`) is the migration path if fields ever change. 
 
 ## Close-out
 
-_TBD — filled in after the PR merges._
+**Merged 2026-04-30 as PR [#26](https://github.com/dagonet/OmniScribe/pull/26).**
+
+| Anchor | Value |
+|---|---|
+| Squash SHA on `main` | `bf4ef74513490f4ee16b5ed8a9058917caa1120b` |
+| Subject | `feat(batch): transcribe-many subcommand with resume-on-failure (#26)` |
+| Files changed | 7 (1,491 insertions, 10 deletions) |
+| `pytest` on release commit | **353 passed, 2 deselected** in 2.11s — exceeded target ≥ 352 |
+| Ruff | format + check clean |
+| CI (GitHub Actions `test` job) | green (`73815885660`) |
+
+### Test deltas
+
+- `tests/test_batch.py` — 20 new tests (plan target: 19; one extra was added during implementation, retained as net-positive coverage)
+- `tests/test_cli.py` — 8 new `transcribe-many` tests (matches plan target)
+- Existing `tests/test_cli.py::test_transcribe_*` — 15 tests passed without modification (regression gate on the `process_single_video` extraction held)
+
+### Plan-alignment audit (PR comment trail)
+
+All 10 design-decisions-locked items honored: Windows-safe atomic writes, Ctrl+C write-cycle ordering, implicit resume (no `--resume` flag), `reconcile()` URL-list-as-source-of-truth, video-ID-to-`sha256[:12]` fallback, 200-char stem truncation, case-insensitive collision lookup on Windows, top-level imports preserved in `cli.py`, regression gate held, per-item logging demoted to DEBUG inside `transcribe-many`. JSON state file uses `sort_keys=True` (`batch.py:166`).
+
+### Deviations from the written plan
+
+- **Sub-agent fallback to PO.** Spawned `code-reviewer` and `tester` sub-agents both hit an org monthly usage limit before posting findings. PO performed both review passes directly, posted a single combined comment on the PR ([comment #4356126522](https://github.com/dagonet/OmniScribe/pull/26#issuecomment-4356126522)) covering all 8 acceptance criteria + all 10 plan-alignment items. Independent review gate effectively held by the PO rather than a separate agent. Future implication: surface the agent-budget exhaustion earlier (at first agent failure) rather than after both fail.
+- **Developer agent ran out of turn budget mid-completion.** The `python-coder` agent implemented `cli.py`, `batch.py`, both test files (353-passing test suite), and got partway through ruff cleanup before its turn ended. PO finished the residual: 3 manual ruff fixes (`SIM105` → `contextlib.suppress`, `SIM113` → `enumerate()`), README Quick Start example, CHANGELOG `[Unreleased]` block. The auto-fixable 12-of-15 ruff issues were applied via `ruff check --fix`.
+
+### Cleanup performed
+
+- Deleted local branch `feat/sprint-5-4-batch-processing` (post-merge — see follow-up commit).
+- Deleted origin branch `feat/sprint-5-4-batch-processing` via `git_push --delete` (post-merge — see follow-up commit).
+- No transient files generated this sprint; nothing else to clean up.
