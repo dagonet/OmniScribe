@@ -309,7 +309,7 @@ Merged output:
 | Phase 2 — OCR pipeline | Complete | `docs/plans/phase-2-5-scene-change.md` (Sprint 2.5, PR #3 — `894fae2`); Sprints 2.1–2.2 merged earlier |
 | Phase 3 — Platform profiles & UI filtering | Complete | Sprint 3.1 (`3d855cc`), Sprint 3.2 (`05bbe37`) |
 | Phase 4 — Merge engine | Complete | `docs/plans/phase-4-merge-engine.md`; Sprint 4.1 (PR #4, `5c81ced`) and Sprint 4.2 (PR #5, `b2a89d6`) merged |
-| Phase 5 — Polish & extensibility | In progress | Sprint 5.1 (PR #6, `530902f`, doc trust-repair) + Sprint 5.2 (PR #7, `db3e4b1`, CI/CD) merged; LLM cleanup / batch / Docker pending |
+| Phase 5 — Polish & extensibility | In progress | Sprints 5.1 (PR #6, `530902f`, doc trust-repair), 5.2 (PR #7, `db3e4b1`, CI/CD), 5.3 (PR #8, `3605a19`, doc/code drift), 5.4 (PR #26, `bf4ef74`, batch processing) merged; LLM cleanup shipped via Sprints 6.1 (PR #12), 6.2 (PR #14), and `681fa03` robustness; **Docker** remaining |
 | Phase 6 — Advanced features | Not started | — |
 
 ### Phase 6 (Future): Advanced Features
