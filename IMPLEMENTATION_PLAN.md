@@ -393,7 +393,6 @@ Strategy:
 ```toml
 [project]
 name = "omniscribe"
-version = "0.1.0"
 description = "Extract complete video transcripts — speech AND on-screen text"
 requires-python = ">=3.11"
 license = "MIT"
@@ -402,7 +401,7 @@ dependencies = [
     "rapidocr>=2.0",               # ONNXRuntime-backed PP-OCR (replaces paddleocr)
     "yt-dlp>=2024.0",
     "opencv-python-headless>=4.9",
-    "typer[all]>=0.12",
+    "typer>=0.13",                 # 0.13+ bundles rich + shellingham; [all] extra dropped
     "pydantic-settings>=2.0",
     "rapidfuzz>=3.0",
     "rich>=13.0",                  # pretty terminal output
