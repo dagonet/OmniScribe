@@ -1591,3 +1591,23 @@ def test_transcribe_many_playlist_extraction_failure_keeps_url(tmp_path: Path, m
     assert [it["source"] for it in state["items"]] == [playlist_url]
     assert state["items"][0]["status"] == "failed"
     assert "Unsupported URL" in state["items"][0]["error"]
+
+
+def test_transcribe_many_all_playlists_empty(tmp_path: Path, monkeypatch) -> None:
+    """When every playlist URL expands to nothing, exit 0 without processing."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    urls_file = _write_urls(tmp_path, ["https://www.youtube.com/playlist?list=PL-empty"])
+    out_dir = tmp_path / "out"
+
+    with (
+        patch("omniscribe.cli.expand_url_list", return_value=[]),
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_proc.assert_not_called()
+    assert not (out_dir / ".omniscribe-batch-state.json").exists()

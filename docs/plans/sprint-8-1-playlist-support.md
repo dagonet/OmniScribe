@@ -232,9 +232,9 @@ Resume semantics:
 - **CI**: `test` workflow ✅ on PR HEAD `45012d5`.
 - **Pipeline**: dev (python-coder) → reviewer (code-reviewer, APPROVE 0 CRITICAL / 1 non-blocking WARN / 2 SUGGEST) → tester (PASS) → squash-merge.
 
-**Reviewer findings carried forward** (non-blocking, candidate follow-ups):
-1. Structural placement of `expand_url_list` in `batch.py` couples it to a network/yt-dlp dep transitively. Plan section 2 was the explicit instruction; design-rationale prose was looser. Either drop a comment near the import in `batch.py:24`, or move `expand_url_list` to `acquire/playlist.py` and re-export. Low priority.
-2. Distinct WARNING log message for the non-dict entry-skip branch vs the no-resolvable-URL branch in `acquire/playlist.py`. Cosmetic.
-3. Add `test_transcribe_many_all_empty_playlists_no_state_written` for the post-expand empty-list short-circuit at `cli.py:504`. Edge-case test coverage.
+**Reviewer findings carried forward** — all resolved in follow-up commit:
+1. ~Structural placement of `expand_url_list` in `batch.py`~ — cut via `/challenge` (YAGNI: the import `from omniscribe.acquire.playlist import expand_playlist` is self-documenting; a comment adds noise without preventing any foreseeable mistake).
+2. ~Distinct WARNING~ — fixed: `playlist.py:96` now logs `"Skipping non-dict playlist entry: %r"`, distinct from the no-resolvable-URL message on line 100. Test `test_expand_playlist_non_dict_entry_skipped` added.
+3. ~Empty-list short-circuit test~ — fixed: `test_transcribe_many_all_playlists_empty` added to `test_cli.py`, covering the `cli.py:504` guard. 380 tests green (+2).
 
 **Tooling note**: the python-coder and tester subagent definitions did not have access to `git-tools` MCP or `MCP_DOCKER` (GitHub) tools. Both completed their substantive work successfully (implementation + verification) but the PO posted commits, the PR, the review/verification GitHub comments, and merged on the dev's behalf. If this becomes a recurring friction point, expand those subagent tool surfaces.

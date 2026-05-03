@@ -160,6 +160,27 @@ def test_expand_playlist_entry_with_no_resolvable_url_skipped(
     assert any("no resolvable URL" in r.message for r in caplog.records)
 
 
+def test_expand_playlist_non_dict_entry_skipped(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    info = {
+        "_type": "playlist",
+        "entries": [
+            {"id": "v1", "url": "https://example.com/v1"},
+            "not-a-dict",
+            {"id": "v2", "url": "https://example.com/v2"},
+        ],
+    }
+    ydl_cls = _make_ydl_mock(extract_info_return=info)
+    with (
+        caplog.at_level(logging.WARNING, logger="omniscribe.acquire.playlist"),
+        patch("omniscribe.acquire.playlist.YoutubeDL", ydl_cls),
+    ):
+        out = expand_playlist("https://example.com/p")
+    assert out == ["https://example.com/v1", "https://example.com/v2"]
+    assert any("non-dict" in r.message for r in caplog.records)
+
+
 def test_expand_playlist_extraction_failure_returns_none(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

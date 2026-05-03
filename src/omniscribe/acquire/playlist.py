@@ -93,7 +93,7 @@ def expand_playlist(url: str) -> list[str] | None:
     out: list[str] = []
     for entry in entries:
         if not isinstance(entry, dict):
-            logger.warning("Skipping playlist entry with no resolvable URL: %r", entry)
+            logger.warning("Skipping non-dict playlist entry: %r", entry)
             continue
         resolved = _entry_to_url(entry)
         if not resolved:
