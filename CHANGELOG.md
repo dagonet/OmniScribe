@@ -10,10 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Batch transcription** (`omniscribe transcribe-many`). Reads sources (one URL or local file path per line) from a text file, processes each via the existing single-video pipeline, writes per-input outputs into a target directory, and resumes on failure via `{output_dir}/.omniscribe-batch-state.json`. Failures are recorded with the error text and skipped; re-running the same command picks up `pending` and `failed` items. Sequential execution — no concurrent transcribes (GPU contention).
+- **Playlist / channel auto-expansion in `transcribe-many`** (Sprint 8.1). Lines in the URL list that resolve to a playlist or channel are automatically expanded via yt-dlp's `extract_flat`, in feed order, before per-video processing. Mix freely with single-video URLs and local file paths in the same `urls.txt`. Sequential expansion + processing; no caching across runs (yt-dlp's `extract_flat` is metadata-only and cheap).
 
 ### Changed
 
 - Internal: `cli.transcribe()`'s orchestration body extracted into a module-level `process_single_video()` helper so the batch command can reuse it. No behavior change for the single-video path.
+- **`transcribe-many` URL list semantics** (Sprint 8.1). Lines that yt-dlp resolves to a playlist URL now auto-expand inline. Previously such lines failed at the per-video extractor with an opaque error. Existing `urls.txt` files containing single-video URLs and local file paths are unaffected.
 
 ## [0.1.1] - 2026-04-30
 

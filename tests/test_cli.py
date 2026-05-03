@@ -1394,3 +1394,200 @@ def test_transcribe_many_ctrl_c_mid_item_keeps_state_valid(tmp_path: Path, monke
         "https://a/2": "pending",
         "https://a/3": "pending",
     }
+
+
+# ── Sprint 8.1: playlist / channel auto-expansion ─────────────────────────
+
+
+def test_transcribe_many_expands_playlist_url(tmp_path: Path, monkeypatch) -> None:
+    """Playlist URL in urls.txt is expanded into per-video items in feed order."""
+    import json as _json
+
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    urls_file = _write_urls(tmp_path, ["https://www.youtube.com/playlist?list=PLx"])
+    out_dir = tmp_path / "out"
+
+    expanded = ["https://example.com/v1", "https://example.com/v2", "https://example.com/v3"]
+
+    def _fake_expand(urls: list[str]) -> list[str]:
+        return expanded
+
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    with (
+        patch("omniscribe.cli.expand_url_list", side_effect=_fake_expand),
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    sources_called = [c.args[0] for c in mock_proc.call_args_list]
+    assert sources_called == expanded
+    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    assert [it["source"] for it in state["items"]] == expanded
+    assert [it["status"] for it in state["items"]] == ["done", "done", "done"]
+
+
+def test_transcribe_many_mixed_playlist_and_singles(tmp_path: Path, monkeypatch) -> None:
+    """Mixed list [single-A, playlist-X, single-B] expands to 4 calls in order."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    inputs = [
+        "https://example.com/single-A",
+        "https://www.youtube.com/playlist?list=PLx",
+        "https://example.com/single-B",
+    ]
+    urls_file = _write_urls(tmp_path, inputs)
+    out_dir = tmp_path / "out"
+
+    final = [
+        "https://example.com/single-A",
+        "https://example.com/v1",
+        "https://example.com/v2",
+        "https://example.com/single-B",
+    ]
+
+    def _fake_expand(urls: list[str]) -> list[str]:
+        return final
+
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    with (
+        patch("omniscribe.cli.expand_url_list", side_effect=_fake_expand),
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    sources_called = [c.args[0] for c in mock_proc.call_args_list]
+    assert sources_called == final
+
+
+def test_transcribe_many_playlist_url_not_in_state(tmp_path: Path, monkeypatch) -> None:
+    """After expansion, the playlist URL itself never appears in state.items."""
+    import json as _json
+
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    playlist_url = "https://www.youtube.com/playlist?list=PLx"
+    urls_file = _write_urls(tmp_path, [playlist_url])
+    out_dir = tmp_path / "out"
+
+    expanded = ["https://example.com/v1", "https://example.com/v2"]
+
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    with (
+        patch("omniscribe.cli.expand_url_list", side_effect=lambda urls: expanded),
+        patch("omniscribe.cli.process_single_video"),
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    sources = [it["source"] for it in state["items"]]
+    assert playlist_url not in sources
+    assert sources == expanded
+
+
+def test_transcribe_many_playlist_resume_skips_done(tmp_path: Path, monkeypatch) -> None:
+    """Pre-existing state with one expanded video done → only the rest are processed."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    playlist_url = "https://www.youtube.com/playlist?list=PLx"
+    urls_file = _write_urls(tmp_path, [playlist_url])
+    out_dir = tmp_path / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    expanded = [
+        "https://example.com/v1",
+        "https://example.com/v2",
+        "https://example.com/v3",
+    ]
+
+    state_path = out_dir / ".omniscribe-batch-state.json"
+    state_path.write_text(
+        "{\n"
+        '  "version": 1,\n'
+        '  "started_at": "2026-04-30T12:00:00+00:00",\n'
+        f'  "input_file": "{urls_file.as_posix()}",\n'
+        f'  "output_dir": "{out_dir.as_posix()}",\n'
+        '  "format": "md",\n'
+        '  "items": [\n'
+        f'    {{"source": "https://example.com/v1", "status": "done", "output_path": "{(out_dir / "v1.md").as_posix()}", "error": null}},\n'
+        '    {"source": "https://example.com/v2", "status": "pending", "output_path": null, "error": null},\n'
+        '    {"source": "https://example.com/v3", "status": "pending", "output_path": null, "error": null}\n'
+        "  ]\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    with (
+        patch("omniscribe.cli.expand_url_list", side_effect=lambda urls: expanded),
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    assert result.exit_code == 0, result.output
+    sources_called = [c.args[0] for c in mock_proc.call_args_list]
+    assert sources_called == ["https://example.com/v2", "https://example.com/v3"]
+
+
+def test_transcribe_many_playlist_extraction_failure_keeps_url(tmp_path: Path, monkeypatch) -> None:
+    """When expand_url_list returns the URL unchanged (extraction failed),
+    the URL is processed verbatim; per-video failure is recorded as ``failed``.
+    """
+    import json as _json
+
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    playlist_url = "https://www.youtube.com/playlist?list=BROKEN"
+    urls_file = _write_urls(tmp_path, [playlist_url])
+    out_dir = tmp_path / "out"
+
+    def _fake_compute(source, output_dir, ext, taken):
+        stem = source.rstrip("/").rsplit("/", 1)[-1]
+        return output_dir / f"{stem}{ext}"
+
+    def _fake_proc(source, *_a, **_kw):
+        raise OmniScribeError("Unsupported URL")
+
+    with (
+        # extraction "failed" → expand_url_list returns the URL unchanged.
+        patch("omniscribe.cli.expand_url_list", side_effect=lambda urls: list(urls)),
+        patch("omniscribe.cli.process_single_video", side_effect=_fake_proc),
+        patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
+    ):
+        result = CliRunner().invoke(
+            app,
+            ["transcribe-many", str(urls_file), "--output-dir", str(out_dir), "--format", "md"],
+        )
+
+    # All items failed → exit 1.
+    assert result.exit_code == 1
+    state = _json.loads((out_dir / ".omniscribe-batch-state.json").read_text(encoding="utf-8"))
+    assert [it["source"] for it in state["items"]] == [playlist_url]
+    assert state["items"][0]["status"] == "failed"
+    assert "Unsupported URL" in state["items"][0]["error"]
