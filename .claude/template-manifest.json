@@ -2,7 +2,7 @@
   "version": 2,
   "variant": "python",
   "templateRepo": "/g/git/claude-code-toolkit",
-  "lastSynced": "788902d",
+  "lastSynced": "fe921cd",
   "placeholders": {
     "PROJECT_NAME": "OmniScribe",
     "PROJECT_NAME_LOWER": "omniscribe",
@@ -22,9 +22,9 @@
       "locallyModified": false
     },
     ".claude/agents/code-reviewer.md": {
-      "templateHash": "42e548d02f47d1c9f5d88c482381f91fc1cd7a30e4bf7b8ee76f26ee99f89280",
-      "templateRawHash": "42e548d02f47d1c9f5d88c482381f91fc1cd7a30e4bf7b8ee76f26ee99f89280",
-      "localHash": "42e548d02f47d1c9f5d88c482381f91fc1cd7a30e4bf7b8ee76f26ee99f89280",
+      "templateHash": "84adaab37efa3c40fb563417045a8147944f11b67352445dcfacafebf5b38589",
+      "templateRawHash": "84adaab37efa3c40fb563417045a8147944f11b67352445dcfacafebf5b38589",
+      "localHash": "84adaab37efa3c40fb563417045a8147944f11b67352445dcfacafebf5b38589",
       "locallyModified": false
     },
     ".claude/agents/coder.md": {
@@ -58,15 +58,15 @@
       "locallyModified": false
     },
     ".claude/agents/tester.md": {
-      "templateHash": "d95c3e90da63c80c407fc2166b8f4e69b6eaeccb1045b14d6c88b178d6dff12b",
-      "templateRawHash": "d95c3e90da63c80c407fc2166b8f4e69b6eaeccb1045b14d6c88b178d6dff12b",
-      "localHash": "d95c3e90da63c80c407fc2166b8f4e69b6eaeccb1045b14d6c88b178d6dff12b",
+      "templateHash": "bff271a30ede11cebd60d8552bf0fbfd82ee28507f7bc7b313f5fe336121fe39",
+      "templateRawHash": "bff271a30ede11cebd60d8552bf0fbfd82ee28507f7bc7b313f5fe336121fe39",
+      "localHash": "bff271a30ede11cebd60d8552bf0fbfd82ee28507f7bc7b313f5fe336121fe39",
       "locallyModified": false
     },
     ".claude/settings.json": {
-      "templateHash": "067e74e59fa3bbb8efeffcea3660cce0013b81ede7b09009fa013d1d059a3209",
-      "templateRawHash": "067e74e59fa3bbb8efeffcea3660cce0013b81ede7b09009fa013d1d059a3209",
-      "localHash": "067e74e59fa3bbb8efeffcea3660cce0013b81ede7b09009fa013d1d059a3209",
+      "templateHash": "5128a8ecdc80a40aa111c861560337f63fd3e918f0f8bb06d5f6e231197b5cca",
+      "templateRawHash": "5128a8ecdc80a40aa111c861560337f63fd3e918f0f8bb06d5f6e231197b5cca",
+      "localHash": "5128a8ecdc80a40aa111c861560337f63fd3e918f0f8bb06d5f6e231197b5cca",
       "locallyModified": false
     },
     ".editorconfig": {
@@ -76,21 +76,21 @@
       "locallyModified": false
     },
     "AGENT_TEAM.md": {
-      "templateHash": "dc9c63dd07dd292861b06eccb438788a462030297f9466dc55991f8abe41986b",
-      "templateRawHash": "dc9c63dd07dd292861b06eccb438788a462030297f9466dc55991f8abe41986b",
-      "localHash": "dc9c63dd07dd292861b06eccb438788a462030297f9466dc55991f8abe41986b",
+      "templateHash": "a05cc6bd4ac1934a53bed69432f1139f83988e5d29adbdb14ee3ee81dbed3c40",
+      "templateRawHash": "a05cc6bd4ac1934a53bed69432f1139f83988e5d29adbdb14ee3ee81dbed3c40",
+      "localHash": "a05cc6bd4ac1934a53bed69432f1139f83988e5d29adbdb14ee3ee81dbed3c40",
       "locallyModified": false
     },
     "CLAUDE.local.md": {
-      "templateHash": "ee91f28fbfafae361b632bb28c389c889d6fcef79ad1a89a296ee44f9b8d3af6",
-      "templateRawHash": "ee91f28fbfafae361b632bb28c389c889d6fcef79ad1a89a296ee44f9b8d3af6",
-      "localHash": "ee91f28fbfafae361b632bb28c389c889d6fcef79ad1a89a296ee44f9b8d3af6",
+      "templateHash": "710a87c990df6125a8eed9a2545903949fce77257990d443f44ff25d831771c0",
+      "templateRawHash": "710a87c990df6125a8eed9a2545903949fce77257990d443f44ff25d831771c0",
+      "localHash": "710a87c990df6125a8eed9a2545903949fce77257990d443f44ff25d831771c0",
       "locallyModified": false
     },
     "CLAUDE.md": {
-      "templateHash": "8bb3e77387f2cfa33234ba7f09821ad7c04e8357046b8b8ead97cf6da9c0d61f",
-      "templateRawHash": "ace448401707e4677056ccab55fde338b628a9299940e3d5ccaa82c19874ca3c",
-      "localHash": "8bb3e77387f2cfa33234ba7f09821ad7c04e8357046b8b8ead97cf6da9c0d61f",
+      "templateHash": "63d011d06444764dd7f1204e2a80b33644ed762e82f699d4490d1bcc4a0d5881",
+      "templateRawHash": "b186356183a38f0ab4d606441ca85f1eee18fd4a786e3db59722d344ea6494d8",
+      "localHash": "63d011d06444764dd7f1204e2a80b33644ed762e82f699d4490d1bcc4a0d5881",
       "locallyModified": false
     },
     "PROJECT_CONTEXT.md": {

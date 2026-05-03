@@ -2,7 +2,7 @@
 name: tester
 description: Verifies features against acceptance criteria using automated tests, data inspection, and log analysis. Posts findings on GitHub issues.
 model: sonnet
-tools: Read, Write, Edit, Grep, Glob, Bash, ToolSearch
+tools: Read, Write, Edit, Grep, Glob, Bash
 mode: bypassPermissions
 hooks:
   PreToolUse:
@@ -61,7 +61,7 @@ For each feature/bug, verify in this order:
 
 ## Findings Format
 
-Post findings directly to GitHub using `ToolSearch` to load `mcp__MCP_DOCKER__add_issue_comment`:
+Return findings text to the PO. The PO posts the comment via `mcp__MCP_DOCKER__add_issue_comment` on your behalf. Format the report exactly as below so the PO can paste verbatim:
 
 ```
 **QA Verification Report**
@@ -107,8 +107,8 @@ When all acceptance criteria pass and no critical/major findings remain:
 - Do NOT modify application source code (only test files)
 - Do NOT create new GitHub issues (comment on existing issue)
 - Max 3 fix cycles per issue, then escalate to PO
-- Use `ToolSearch` to discover and use MCP GitHub tools for issue comments
-- Use MCP git tools for git operations (never bash `git` commands)
+- Return findings text to the PO. The PO posts the comment via MCP on your behalf.
+- Do not attempt git or GitHub operations directly — return what you observed in your final response and the PO will act on it.
 - Always read `PROJECT_STATE.md` and the GitHub issue before starting verification
 
 ## Write Permissions

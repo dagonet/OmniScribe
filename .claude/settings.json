@@ -10,6 +10,7 @@
       "WebFetch(*)",
       "mcp__git-tools__*",
       "mcp__github-tools__*",
+      "mcp__python-tools__*",
       "mcp__MCP_DOCKER__*",
       "mcp__dotnet-tools__*",
       "mcp__rust-tools__*",

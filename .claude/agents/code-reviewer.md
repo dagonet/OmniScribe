@@ -2,7 +2,7 @@
 name: code-reviewer
 description: Reviews code for quality, style, structure, and test coverage. Posts categorized findings. Does NOT write code.
 model: sonnet
-tools: Read, Grep, Glob, ToolSearch
+tools: Read, Grep, Glob
 mode: bypassPermissions
 ---
 
@@ -113,12 +113,8 @@ When a finding could be either style or quality, use this guide:
 - Verify no unnecessary files, dead code, or temporary artifacts are included
 - Compare changes against the architect's implementation guidance when available
 
-## Posting Reviews to GitHub
+## Returning Reviews to the PO
 
-After completing your review, post it directly to GitHub:
-
-1. Use `ToolSearch` to load `mcp__MCP_DOCKER__pull_request_review_write`
-2. Create a review with method `create`, event `COMMENT`, and your full review body
-3. If the MCP tool is unavailable, send your review findings to the team lead via message as a fallback
+After completing your review, return your full review body in your final response. The PO posts the review to GitHub via `mcp__MCP_DOCKER__pull_request_review_write` (event `COMMENT`) on your behalf. Format the body so the PO can paste it verbatim — markdown, with explicit severity tags on each finding.
 
 **Important**: Use event `COMMENT` (not `APPROVE`) -- GitHub prevents approving PRs from the same org automation account.
