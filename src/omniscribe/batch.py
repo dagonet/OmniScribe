@@ -21,6 +21,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
 
+from omniscribe.acquire.playlist import expand_playlist
+
 logger = logging.getLogger(__name__)
 
 
@@ -186,6 +188,28 @@ def parse_url_list(path: Path) -> list[str]:
     """
     raw = path.read_text(encoding="utf-8-sig")
     return [line.strip() for line in raw.splitlines() if line.strip()]
+
+
+def expand_url_list(urls: list[str]) -> list[str]:
+    """Expand any playlist / channel URLs in ``urls`` in place.
+
+    Each entry is fed through :func:`omniscribe.acquire.playlist.expand_playlist`.
+    A non-``None`` return splices its expansion into the position the original
+    entry occupied; a ``None`` return keeps the entry verbatim (single-video
+    URL, local file path, or extraction failure — all share the "treat as
+    single line" semantics).
+
+    Order is preserved at the per-video granularity: the final list is the
+    concatenation of expansions and pass-through entries in input order.
+    """
+    out: list[str] = []
+    for url in urls:
+        expanded = expand_playlist(url)
+        if expanded is None:
+            out.append(url)
+        else:
+            out.extend(expanded)
+    return out
 
 
 # ── Output path computation ───────────────────────────────────────────────

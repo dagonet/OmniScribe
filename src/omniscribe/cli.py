@@ -24,6 +24,7 @@ from omniscribe.audio import extract_audio
 from omniscribe.batch import (
     BatchState,
     compute_output_path,
+    expand_url_list,
     load_state,
     parse_url_list,
     reconcile,
@@ -493,6 +494,15 @@ def transcribe_many(
 
     if not urls:
         # Empty list — nothing to do, no state file written.
+        return
+
+    # Sprint 8.1: expand any playlist / channel URLs in-place before reconcile
+    # so per-video items are the source-of-truth for state. Single-video URLs,
+    # local files, and any failed expansion pass through untouched.
+    urls = expand_url_list(urls)
+
+    if not urls:
+        # All lines were empty playlists; nothing to do.
         return
 
     prior_state = load_state(state_path)

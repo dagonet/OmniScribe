@@ -64,7 +64,14 @@ omniscribe transcribe ./video.mp4 --llm-cleanup --asr-cleanup --output transcrip
 
 # Batch — one URL per line in urls.txt; outputs land in transcripts/
 omniscribe transcribe-many urls.txt --output-dir transcripts/ --format md
+
+# Batch a whole YouTube channel or playlist (auto-expanded inline)
+echo "https://www.youtube.com/@channel/videos" > urls.txt
+omniscribe transcribe-many urls.txt --output-dir transcripts/ --format md
 ```
+
+Playlist + channel URLs in the URL list are automatically expanded via yt-dlp;
+mix freely with single-video URLs and local file paths in the same `urls.txt`.
 
 Re-running `transcribe-many` with the same `--output-dir` resumes from
 `{output_dir}/.omniscribe-batch-state.json` — completed items are skipped, and
