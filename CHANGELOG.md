@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Batch transcription** (`omniscribe transcribe-many`). Reads sources (one URL or local file path per line) from a text file, processes each via the existing single-video pipeline, writes per-input outputs into a target directory, and resumes on failure via `{output_dir}/.omniscribe-batch-state.json`. Failures are recorded with the error text and skipped; re-running the same command picks up `pending` and `failed` items. Sequential execution — no concurrent transcribes (GPU contention).
+- **Docker containerization** (Phase 5). Single-stage `nvidia/cuda:12.6.3-runtime-ubuntu22.04` image with Whisper `large-v3-turbo` and RapidOCR models pre-downloaded. GPU passthrough via NVIDIA Container Toolkit; CPU fallback via `OMNI_WHISPER_DEVICE=cpu`. Added missing `opencv-python-headless` dependency.
 - **Playlist / channel auto-expansion in `transcribe-many`** (Sprint 8.1). Lines in the URL list that resolve to a playlist or channel are automatically expanded via yt-dlp's `extract_flat`, in feed order, before per-video processing. Mix freely with single-video URLs and local file paths in the same `urls.txt`. Sequential expansion + processing; no caching across runs (yt-dlp's `extract_flat` is metadata-only and cheap).
 
 ### Changed

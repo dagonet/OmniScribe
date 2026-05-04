@@ -133,11 +133,31 @@ segments. The noise sits alongside them.
   low-confidence partial detections, at the cost of also missing some real
   text.
 
+## Docker
+
+```bash
+# Build
+docker build -t omniscribe .
+
+# GPU transcription
+docker run --gpus all --rm -v ./output:/output omniscribe transcribe \
+  "https://www.youtube.com/watch?v=dQw4w9WgXcQ" -o /output/transcript.json
+
+# CPU-only (override defaults)
+docker run --rm -e OMNI_WHISPER_DEVICE=cpu -e OMNI_OCR_DEVICE=cpu omniscribe transcribe \
+  ./video.mp4 -o /output/transcript.json
+```
+
+The image bundles Whisper `large-v3-turbo` (~1.5 GB) and RapidOCR models (~15 MB)
+so transcription starts instantly — no model downloads at runtime.
+GPU passthrough requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
+
 ## Requirements
 
 - Python 3.11 or 3.12
 - NVIDIA GPU with CUDA 12.x (recommended, 8+ GB VRAM). Verify: `python -c "import onnxruntime as ort; print(ort.get_available_providers())"` — should list `CUDAExecutionProvider`
 - ffmpeg
+- Docker 20.10+ (optional — for containerized deployment)
 
 On Windows, CUDA 12 runtime libraries (cuda_runtime, cublas, cudnn, cufft) are bundled via pip — no separate CUDA toolkit install required. A system CUDA install, if present, is not used.
 
