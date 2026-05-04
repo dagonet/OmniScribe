@@ -20,6 +20,7 @@ Review all code changes for:
 - Resource leaks (unclosed handles, connections, file descriptors)
 - Concurrency misuse (blocking on async, missing synchronization, deadlock patterns)
 - API contract breaks without migration strategy
+- Symptom-level fixes that mask root causes — when a bug is reported, check whether the fix addresses the origin or just the visible effect. Flag fixes that add guard clauses around broken state without fixing the source.
 
 ### Style
 - Code formatting consistency

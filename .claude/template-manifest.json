@@ -2,7 +2,7 @@
   "version": 2,
   "variant": "python",
   "templateRepo": "/g/git/claude-code-toolkit",
-  "lastSynced": "c40cf0e",
+  "lastSynced": "c7ecf93",
   "placeholders": {
     "PROJECT_NAME": "OmniScribe",
     "PROJECT_NAME_LOWER": "omniscribe",
@@ -22,15 +22,15 @@
       "locallyModified": false
     },
     ".claude/agents/code-reviewer.md": {
-      "templateHash": "29330a653e7aa8e409cff65d4ba17ac42420eabd55d954879a091e87d5680cc2",
-      "templateRawHash": "29330a653e7aa8e409cff65d4ba17ac42420eabd55d954879a091e87d5680cc2",
-      "localHash": "29330a653e7aa8e409cff65d4ba17ac42420eabd55d954879a091e87d5680cc2",
+      "templateHash": "add81120fb5e4c979c8efcba5ef381ee6cdf0f50fb6d3623dcbc41af88ff9a1d",
+      "templateRawHash": "add81120fb5e4c979c8efcba5ef381ee6cdf0f50fb6d3623dcbc41af88ff9a1d",
+      "localHash": "add81120fb5e4c979c8efcba5ef381ee6cdf0f50fb6d3623dcbc41af88ff9a1d",
       "locallyModified": false
     },
     ".claude/agents/coder.md": {
-      "templateHash": "4c7062d4ea57fb021dd5a5802c562c73413d90a2b4442ee0933048d94b6ea765",
-      "templateRawHash": "4c7062d4ea57fb021dd5a5802c562c73413d90a2b4442ee0933048d94b6ea765",
-      "localHash": "4c7062d4ea57fb021dd5a5802c562c73413d90a2b4442ee0933048d94b6ea765",
+      "templateHash": "7c1417a369e09d48a623a10ac4668954f85d687b40c8bbd5a236eef53ece3472",
+      "templateRawHash": "7c1417a369e09d48a623a10ac4668954f85d687b40c8bbd5a236eef53ece3472",
+      "localHash": "7c1417a369e09d48a623a10ac4668954f85d687b40c8bbd5a236eef53ece3472",
       "locallyModified": false
     },
     ".claude/agents/doc-generator.md": {
@@ -76,9 +76,9 @@
       "locallyModified": false
     },
     "AGENT_TEAM.md": {
-      "templateHash": "ce9c743517b02f22c5bdc82a7cc46558cf8efa44601c9c866410a21e28271834",
-      "templateRawHash": "ce9c743517b02f22c5bdc82a7cc46558cf8efa44601c9c866410a21e28271834",
-      "localHash": "ce9c743517b02f22c5bdc82a7cc46558cf8efa44601c9c866410a21e28271834",
+      "templateHash": "b90359b659918357b6194879c8da2dedc5c0374e7bf51a25795c4dd341498a8c",
+      "templateRawHash": "b90359b659918357b6194879c8da2dedc5c0374e7bf51a25795c4dd341498a8c",
+      "localHash": "b90359b659918357b6194879c8da2dedc5c0374e7bf51a25795c4dd341498a8c",
       "locallyModified": false
     },
     "CLAUDE.local.md": {
@@ -88,9 +88,9 @@
       "locallyModified": false
     },
     "CLAUDE.md": {
-      "templateHash": "e505c0e7396c275e86aac4e1d02665d6f4b7862288243ae6fb71074ed14fd50c",
-      "templateRawHash": "935b0676200a794ad894640422ebe76ba8c5127393565e55c3f2ee374e0a8727",
-      "localHash": "e505c0e7396c275e86aac4e1d02665d6f4b7862288243ae6fb71074ed14fd50c",
+      "templateHash": "ef120de5c75491dd5a211893eb57e40b7ce6962a59c25c70b997bcdffd75e78c",
+      "templateRawHash": "e11c07a59cb856c976a590fa1977092f818306c92f40f40fa418e068da1cfaa8",
+      "localHash": "ef120de5c75491dd5a211893eb57e40b7ce6962a59c25c70b997bcdffd75e78c",
       "locallyModified": false
     },
     "PROJECT_CONTEXT.md": {

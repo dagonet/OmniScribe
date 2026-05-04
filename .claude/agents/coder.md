@@ -32,6 +32,7 @@ Prefer TDD (Red → Green → Refactor), but do not get stuck:
 - Use async/await properly; propagate cancellation tokens where appropriate.
 - Avoid swallowing exceptions; use clear error handling.
 - Keep methods small and intention-revealing.
+- When you encounter a bug, trace the data flow backward to find where the wrong value originated — fix it there, not where you noticed it. Never add a guard clause that masks a root cause.
 - Keep public APIs documented when it adds value.
 
 ## Output Style

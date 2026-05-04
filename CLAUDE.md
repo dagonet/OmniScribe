@@ -145,6 +145,7 @@ Opt-in (add to `enabledPlugins` if needed): `feature-dev`, `code-simplifier`, `c
 - **Fix CI proactively** — if build or CI fails, fix it without waiting to be told
 - **Analyze before coding** — before implementing fixes or non-trivial features, enumerate edge cases and identify all callers/consumers that could be affected. For bug fixes, verify the root cause from data (query DB, check logs) before writing code
 - **Post-merge verification** — after any merge or conflict resolution, immediately run the full build and test suite. Check for dropped imports, deleted lines, or accidentally reverted changes before moving on
+- **Commit messages explain why** — write commit messages so a reviewer reading the diff cold understands the reasoning without asking follow-up questions
 
 ---
 

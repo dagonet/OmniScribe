@@ -303,6 +303,8 @@ Not all changes need the full sprint ceremony. The PO selects the tier based on 
 | Add a new config key + reading code | **No → T2** | Config + logic, 2 concerns |
 | Reorder methods for readability | **No** | Merge conflict risk, low value |
 
+Within the agreed tier: do the complete thing, not the demo path — a working end-to-end implementation, not a happy-path skeleton.
+
 ### Tiered Definition of Done
 
 | Checkpoint | T1 | T2 | T3 | T4 |
@@ -318,6 +320,7 @@ Not all changes need the full sprint ceremony. The PO selects the tier based on 
 | Build clean + formatted | Required | Required | Required | Required |
 | PR squash-merged | — | Required | Required | Required |
 | Worktree cleaned up | — | Required | Required | Required |
+| No `TODO`/`FIXME`/`HACK` in changed files | Required | Required | Required | Required |
 | Task closed (see Mode Table) | PO | PO | PO | PO |
 
 ### Lean Dev Prompt Templates
