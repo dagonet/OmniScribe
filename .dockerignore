@@ -8,9 +8,12 @@
 
 # Docs
 docs/
-*.md
 CHANGELOG.md
 LICENSE
+AGENT_TEAM.md
+PROJECT_CONTEXT.md
+PROJECT_STATE.md
+!README.md
 
 # Tests
 tests/

@@ -19,19 +19,19 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Install dependencies (layer cached unless pyproject.toml/uv.lock changes)
-COPY pyproject.toml uv.lock ./
+# Install dependencies (layer cached unless pyproject.toml/uv.lock/README.md changes)
+COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev
 
 # Pre-download Whisper model (~1.5 GB)
-RUN python3.11 -c "from faster_whisper import WhisperModel; WhisperModel('large-v3-turbo', device='cpu', compute_type='int8')"
+RUN .venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3-turbo', device='cpu', compute_type='int8')"
 
 # Pre-download RapidOCR models (~15 MB)
-RUN python3.11 -c "from rapidocr import RapidOCR; RapidOCR(params={'EngineConfig.onnxruntime.use_cuda': False})"
+RUN .venv/bin/python -c "from rapidocr import RapidOCR; RapidOCR(params={'EngineConfig.onnxruntime.use_cuda': False})"
 
 # Install application
 COPY src/ ./src/
-RUN uv sync --frozen --no-dev --no-install-deps \
+RUN uv sync --frozen --no-dev \
     && uv cache clean
 
 ENV PATH="/app/.venv/bin:$PATH"
