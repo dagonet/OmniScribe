@@ -2,7 +2,7 @@
 name: coder
 description: Use this agent to implement any kind of software changes in a repository with high-quality engineering standards.
 model: opus
-tools: Read, Edit, Grep, Glob, Bash
+tools: Read, Edit, Grep, Glob, Bash, mcp__git-tools__git_status, mcp__git-tools__git_diff, mcp__git-tools__git_diff_summary, mcp__git-tools__git_log, mcp__git-tools__git_show, mcp__git-tools__git_add, mcp__git-tools__git_rm, mcp__git-tools__git_commit, mcp__git-tools__git_push, mcp__git-tools__git_pull, mcp__git-tools__git_fetch, mcp__git-tools__git_checkout, mcp__git-tools__git_branch_create, mcp__git-tools__git_branch_list, mcp__git-tools__git_branch_delete, mcp__git-tools__git_rebase, mcp__git-tools__git_worktree_add, mcp__git-tools__git_worktree_list, mcp__git-tools__git_worktree_remove, mcp__MCP_DOCKER__create_pull_request, mcp__MCP_DOCKER__merge_pull_request, mcp__MCP_DOCKER__list_pull_requests, mcp__MCP_DOCKER__pull_request_read, mcp__MCP_DOCKER__issue_read, mcp__github-tools__gh_repo_from_origin, mcp__github-tools__gh_workflow_list, mcp__github-tools__github_check_runs_for_sha
 color: green
 mode: bypassPermissions
 hooks:
@@ -33,7 +33,6 @@ Prefer TDD (Red → Green → Refactor), but do not get stuck:
 - Avoid swallowing exceptions; use clear error handling.
 - Keep methods small and intention-revealing.
 - Keep public APIs documented when it adds value.
-- When using an unfamiliar library API, look it up via Context7 (`resolve-library-id` then `query-docs`) before implementing. Defer to existing codebase patterns when available.
 
 ## Output Style
 

@@ -209,7 +209,7 @@ These agents are spawned at PO discretion. They are not part of the standard wor
 A workstream is an **independent pipeline** for a single task, containing:
 
 ```
-Developer --> Code Reviewer --> Tester --> PO merges PR (specialized) | Developer merges PR (general-purpose only)
+Developer --> Code Reviewer --> Tester --> Developer merges PR
 ```
 
 Each workstream operates autonomously. No shared reviewer or tester bottleneck.
@@ -380,23 +380,22 @@ See `PROJECT_CONTEXT.md` for worktree base path. See Mode Behavior Table for nam
 - Each developer works **only** in its assigned worktree.
 - Max parallel workstreams as specified in `PROJECT_CONTEXT.md`.
 - Architect **must** flag scope conflicts before parallel work begins.
-- On completion (PR merged), the merge owner (PO for specialized devs, developer for general-purpose) removes the worktree and deletes the branch.
+- On completion (PR merged), the developer removes the worktree and deletes the branch.
 
 ---
 
 ## Merge Protocol
 
-After code review and testing pass, the merge owner depends on the developer sub-agent type. Claude Code's sub-agent dispatch strips `mcp__*` tools and `ToolSearch` from any sub-agent with an explicit `tools:` list — only sub-agents declared with `tools: *` (the `general-purpose` agent type) receive the full deferred MCP catalog. Specialized sub-agents (`coder`, `python-coder`, `dotnet-coder`, `rust-coder`, `java-coder`, `test-writer`, `tester`, `code-reviewer`) cannot perform git or GitHub operations themselves.
+After code review and testing pass, the developer executes the merge. MCP tools (git and GitHub) are listed explicitly in each developer agent's `tools:` frontmatter, giving them direct access to commit, push, create PRs, and merge.
 
 | Developer sub-agent type | Merge owner |
 |---|---|
-| `general-purpose` (declared with `tools: *`) | Developer (uses `mcp__git-tools__*` and `mcp__MCP_DOCKER__*` directly) |
-| `coder`, `python-coder`, `dotnet-coder`, `rust-coder`, `java-coder` | **PO** (developer cannot call MCP tools) |
-| `test-writer`, `tester`, `code-reviewer` | **PO** (same constraint) |
+| `coder`, `python-coder`, `dotnet-coder`, `rust-coder`, `java-coder` | Developer (MCP tools listed explicitly) |
+| `general-purpose` (declared with `tools: *`) | Developer (full MCP catalog via ToolSearch) |
 
-For any specialized sub-agent: when implementation, review, and verification complete, the sub-agent returns the work product (changed files, review findings, verification report) to the PO. The PO performs all git and GitHub I/O on the sub-agent's behalf.
+**Agents without git/GitHub MCP tools** (`architect`, `requirements-engineer`, `doc-generator`, `test-writer`): return work to the PO; PO performs git/GitHub I/O on their behalf.
 
-### Steps (PO-executed unless dev is `general-purpose`)
+### Steps (Developer-executed)
 
 ```
 1. Pull latest main into the worktree (git_pull or equivalent MCP tools).
@@ -410,8 +409,7 @@ For any specialized sub-agent: when implementation, review, and verification com
    f. Force-push the branch.
 
    2b. If conflicts are complex (>10 conflicting files OR >100 conflict lines):
-       - PO decides: (a) resolve with guidance from developer, (b) defer merge until other workstreams complete, or (c) re-spawn architect for conflict resolution strategy.
-       - Specialized sub-agents do NOT attempt complex conflict resolution autonomously.
+       - Developer messages PO. PO decides: (a) resolve with guidance from developer, (b) defer merge until other workstreams complete, or (c) re-spawn architect for conflict resolution strategy.
 
 3. Verify CI passes:
    a. Check CI workflow status via gh_workflow_list after push.
@@ -424,14 +422,14 @@ For any specialized sub-agent: when implementation, review, and verification com
 5. Cleanup:
    a. Remove the worktree.
    b. Delete the local and remote feature branch.
-   c. (general-purpose dev only) Notify the PO that merge is complete.
+   c. Notify the PO that merge is complete.
 ```
 
 ### Merge Ordering
 
 When multiple workstreams finish around the same time, merges happen on a **first-ready, first-merge** basis. Each subsequent merge must rebase onto the updated main before merging.
 
-The PO coordinates merge ordering. For `general-purpose` developers, the PO sends merge-go-ahead messages and the developer merges. For specialized developers, the PO performs the merge directly after the per-workstream pipeline completes.
+The PO coordinates merge ordering by sending merge-go-ahead messages. Developers wait for the go-ahead before merging.
 
 ---
 
@@ -483,7 +481,9 @@ The PO coordinates merge ordering. For `general-purpose` developers, the PO send
    |-- FAIL -> Developer fixes -> back to step 3
    \-- PASS -> Tester shuts down
        |
-5. PO sends merge-go-ahead. For specialized sub-agents the PO executes the merge directly; for general-purpose developers the PO signals and the developer executes.
+5. PO sends merge-go-ahead. Developer executes the merge.
+   Note: For T4 sprints where a tester wrote verification tests, PO includes in the go-ahead:
+   "Tester wrote verification tests — check git_status and commit them before merging."
        |
 6. Merge Protocol runs (per merge-owner table in Merge Protocol section).
    - rebase onto latest main
@@ -554,7 +554,7 @@ Within a workstream, handoffs happen via **team messages** (SendMessage tool):
 - Developer -> PO: "PR created, ready for review" (PO spawns reviewer)
 - Reviewer -> PO: "Review complete, findings: ..." (PO decides next step)
 - Tester -> PO: "Verification complete, verdict: PASS/FAIL" (PO sends merge-go-ahead or fix request)
-- For general-purpose developers only: Developer -> PO: "Merge complete, cleanup done" (PO closes task). For specialized sub-agents the PO performs the merge and closes the task itself.
+- Developer -> PO: "Merge complete, cleanup done" (PO closes task).
 
 ### PO orchestration messages
 
@@ -594,8 +594,8 @@ The PO presents these as a single confirmation at sprint start. All agents are s
 2. **One task per developer** — no multitasking within an agent.
 3. **Max parallel workstreams** as specified in `PROJECT_CONTEXT.md`.
 4. **Architect reviews BEFORE development** — guidance before dev starts (T4).
-5. **Merge ownership depends on sub-agent type** — `general-purpose` developers (declared with `tools: *`) own the merge; for specialized sub-agents (`coder`, `*-coder`, `test-writer`, `tester`, `code-reviewer`) the PO performs the merge. See Merge Protocol section.
-6. **PO sequences merges** — for general-purpose devs, developers wait for merge-go-ahead; for specialized devs, the PO merges directly per the sequence.
+5. **Developers own the merge** — all developer agents have MCP git/GitHub tools and execute their own merges after PO sends merge-go-ahead. Agents without git/GitHub tools (`architect`, `requirements-engineer`, `doc-generator`, `test-writer`) return work to the PO.
+6. **PO sequences merges** — developers wait for merge-go-ahead from the PO before merging.
 7. **Post-rebase verification required** — rebuild + retest before merge.
 8. **Max 3 fix cycles per task** — then PO pauses the workstream and selects one of: (a) scope reduction, (b) architect re-design, or (c) human escalation. See Escalation Protocol.
 9. **Workstream agents are ephemeral** — shut down after their phase.
@@ -612,7 +612,7 @@ The PO presents these as a single confirmation at sprint start. All agents are s
   - **(a) Scope reduction**: Simplify the task (remove edge cases, split into smaller pieces) and restart with reduced scope.
   - **(b) Architect re-design**: Re-spawn architect with the failure context. Architect produces a new approach. Dev restarts from the new plan.
   - **(c) Human escalation**: Notify the user with: task description, what was tried (3 cycles), failure details, and recommended next steps.
-- **Merge conflicts too complex**: For general-purpose devs, the developer messages PO with details. For specialized devs, the PO encounters the conflict during merge and decides per the Merge Protocol fallback (defer, re-spawn architect, etc.).
+- **Merge conflicts too complex**: Developer messages PO with details. PO decides per the Merge Protocol fallback (defer, re-spawn architect, etc.).
 - **Tester can't verify**: Message PO with details, PO routes to developer.
 - **Scope conflict discovered mid-sprint**: PO pauses affected workstreams, re-spawns architect for conflict resolution.
 - **Any agent stuck after escalation**: PO notifies the human (via issue comment in github-issues mode, or direct message in plan-files mode).

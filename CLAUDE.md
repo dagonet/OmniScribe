@@ -36,7 +36,7 @@ Claude operates as **Product Owner (PO)** — the orchestrator who plans sprints
 
 **Every plan MUST declare its tier.** The PO enforces the correct team setup per tier before spawning agents.
 
-**Per-workstream pipeline:** Developer -> Code Reviewer -> Tester -> **PO merges PR** (PO performs the merge for specialized sub-agents — `coder`, `*-coder`, `tester`, `code-reviewer`, `test-writer` — because Claude Code strips `mcp__*` from agents with explicit `tools:` lists. For `general-purpose` developers declared with `tools: *`, the developer merges. See `AGENT_TEAM.md` → Merge Protocol.)
+**Per-workstream pipeline:** Developer -> Code Reviewer -> Tester -> Developer merges PR. All developer agents have explicit MCP tools for git/GitHub operations. See `AGENT_TEAM.md` → Merge Protocol.
 
 **Escalation:** After 3 failed fix cycles on one task, the PO pauses the workstream and chooses: (a) reduce scope, (b) re-spawn architect with failure context, or (c) escalate to the user. See Escalation Protocol in `AGENT_TEAM.md`.
 
@@ -55,7 +55,7 @@ When spawning agents, include a `## Required Skills` block in the spawn prompt. 
 | `requirements-engineer` | `superpowers:brainstorming` |
 | `code-reviewer` / `doc-generator` | *(none — omit the block; hook passes them through)* |
 
-> **Spawn-prompt rule for specialized sub-agents:** Do NOT include commit, push, PR-creation, PR-merge, or comment-posting instructions in spawn prompts for any sub-agent type listed in this table. Claude Code's dispatch strips `mcp__*` tools and `ToolSearch` from agents with explicit `tools:` lists, so the agent will fail any such call with "No such tool available". Have the agent return its work product (files written, review findings, verification report) and let the PO perform the git + GitHub I/O. Only `general-purpose` (declared with `tools: *`) is exempt.
+> **Spawn-prompt rule for agents without MCP tools:** Do NOT include commit, push, PR-creation, PR-merge, or comment-posting instructions in spawn prompts for `architect`, `requirements-engineer`, `doc-generator`, or `test-writer`. These agents do not have git/GitHub MCP tools in their `tools:` frontmatter and cannot perform such operations. Have them return their work product and let the PO perform the git + GitHub I/O. All other agents (`coder`, variant coders, `code-reviewer`, `tester`) have explicit MCP tools and handle their own git/GitHub operations.
 
 Full copy-paste snippets + rationale: `AGENT_TEAM.md` → *Spawn-Prompt Binding Table* (load on-demand).
 
@@ -215,7 +215,7 @@ Before marking any commit/push complete, verify:
 - `git_diff_summary(staged=false)` — confirm no unstaged changes forgotten
 - After push: check tool output for success; if rejected, diagnose immediately
 
-**Merge ownership:** depends on developer sub-agent type. For `general-purpose` developers (declared with `tools: *`), the developer owns the merge — rebase, CI-check, and squash-merge are the developer's job. For specialized sub-agents (`coder`, `*-coder`, `test-writer`, `tester`, `code-reviewer`), the **PO performs the merge** because Claude Code strips `mcp__*` and `ToolSearch` from agents with explicit `tools:` lists and the agent cannot call git or GitHub MCP tools. The PO sequences merges across workstreams. See `AGENT_TEAM.md` → Merge Protocol for the full table.
+**Merge ownership:** Developer agents (`coder`, variant coders, `general-purpose`) own the merge — rebase, CI-check, and squash-merge are the developer's job. The PO sequences merges across workstreams by sending merge-go-ahead messages. See `AGENT_TEAM.md` → Merge Protocol.
 
 ---
 

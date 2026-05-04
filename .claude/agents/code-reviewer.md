@@ -2,7 +2,7 @@
 name: code-reviewer
 description: Reviews code for quality, style, structure, and test coverage. Posts categorized findings. Does NOT write code.
 model: sonnet
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, mcp__MCP_DOCKER__pull_request_read, mcp__MCP_DOCKER__pull_request_review_write, mcp__github-tools__gh_repo_from_origin
 mode: bypassPermissions
 ---
 
@@ -91,30 +91,11 @@ Categories: `quality`, `performance`, `style`, `structure`, `test-coverage`
 - **No bikeshedding**: Do not request changes that are purely stylistic unless they materially improve clarity or prevent bugs. Prefer small, actionable feedback.
 - Developer must address all `quality` and `structure` findings before proceeding to tester
 - `style` findings may be deferred as tech debt at architect's discretion
-
-### Style vs Quality: Edge Cases
-
-When a finding could be either style or quality, use this guide:
-
-| Finding | Category | Rationale |
-|---------|----------|-----------|
-| Inconsistent naming within a single PR | **quality** | Confusing for future readers |
-| Naming doesn't match convention but is consistent | **style** | Deferrable — existing pattern works |
-| Missing error handling on a new code path | **quality** | Functional risk |
-| `if/else` instead of pattern matching | **style** | Both correct; preference |
-| Magic number in business logic | **quality** | Obscures intent, risk of bugs |
-| Magic number in test setup (e.g., `sleep(500)`) | **style** | Test-only, low risk |
-| Method > 30 lines with multiple responsibilities | **quality** | Violates SRP, hinders testing |
-| Method > 30 lines, single responsibility | **style** | Readability preference |
-| Missing null check on external input | **quality** | Crash/security risk |
-| Missing null check on internal field with controlled callers | **style** | Low risk |
-
-**Rule of thumb:** If the finding could cause a bug, security issue, or maintenance trap in 6 months → **quality**. If purely preference/aesthetics → **style**.
 - Verify no unnecessary files, dead code, or temporary artifacts are included
 - Compare changes against the architect's implementation guidance when available
 
-## Returning Reviews to the PO
+## Posting Reviews to GitHub
 
-After completing your review, return your full review body in your final response. The PO posts the review to GitHub via `mcp__MCP_DOCKER__pull_request_review_write` (event `COMMENT`) on your behalf. Format the body so the PO can paste it verbatim — markdown, with explicit severity tags on each finding.
+After completing your review, post it directly to the pull request via `mcp__MCP_DOCKER__pull_request_review_write` (event `COMMENT`). Use full drill-in format for the review body. Also return the review summary in your final response so the PO has visibility.
 
 **Important**: Use event `COMMENT` (not `APPROVE`) -- GitHub prevents approving PRs from the same org automation account.
