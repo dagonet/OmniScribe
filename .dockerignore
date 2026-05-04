@@ -1,0 +1,61 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+
+# Docs
+docs/
+*.md
+CHANGELOG.md
+LICENSE
+
+# Tests
+tests/
+*.pytest_cache/
+*.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment
+.env
+.env.*
+
+# Temp / output / models
+temp/
+output/
+models/
+
+# Claude Code
+.claude/
+
+# Media files (keep these out of Docker image)
+*.mp4
+*.mp3
+*.wav
+*.avi
+*.mov

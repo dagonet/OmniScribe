@@ -48,6 +48,7 @@ dependencies = [
     "pydantic-settings>=2.0",
     "rapidfuzz>=3.9,<4.0",
     "rich>=13.0",
+    "opencv-python-headless>=4.9,<5.0",
 ]
 
 [project.optional-dependencies]
