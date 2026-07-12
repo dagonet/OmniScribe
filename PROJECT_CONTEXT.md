@@ -12,7 +12,7 @@
 - **Test Command**: uv run pytest
 - **Format Command**: uv run ruff format .
 - **Lint Command**: uv run ruff check .
-- **Python Version**: 3.11
+- **Gate Command**: {{GATE_COMMAND}}
 
 ## Paths
 

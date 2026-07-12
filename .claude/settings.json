@@ -10,7 +10,6 @@
       "WebFetch(*)",
       "mcp__git-tools__*",
       "mcp__github-tools__*",
-      "mcp__python-tools__*",
       "mcp__MCP_DOCKER__*",
       "mcp__dotnet-tools__*",
       "mcp__rust-tools__*",
@@ -41,35 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(git *)",
-            "command": "echo 'BLOCKED: Use MCP git-tools instead of Bash git commands. See CLAUDE.local.md.' >&2; exit 2"
-          },
-          {
-            "type": "command",
-            "if": "Bash(gh *)",
-            "command": "echo 'BLOCKED: Use MCP github-tools instead of Bash gh CLI. See CLAUDE.local.md.' >&2; exit 2"
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__git-tools__git_push",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash hooks/no-push-main.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Agent",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash hooks/tier-before-coder.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash hooks/require-skills-block.sh"
+            "command": "bash hooks/block-bash-vcs.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/block-bash-vcs.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
           }
         ]
       },
@@ -78,31 +49,58 @@
         "hooks": [
           {
             "type": "command",
-            "command": "ruff format --check . > /tmp/.claude-fmt 2>&1; F=$?; ruff check . > /tmp/.claude-lint 2>&1; L=$?; if [ $F -ne 0 ]; then tail -5 /tmp/.claude-fmt; echo 'BLOCKED: Format violations. Run: ruff format .' >&2; exit 2; fi; if [ $L -ne 0 ]; then tail -5 /tmp/.claude-lint; echo 'BLOCKED: Lint violations. Run: ruff check . --fix' >&2; exit 2; fi",
-            "timeout": 15
+            "command": "bash hooks/pre-commit-test.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/pre-commit-test.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
           }
         ]
-      }
-    ],
-    "PostToolUse": [
+      },
       {
-        "matcher": "Edit|Write",
+        "matcher": "mcp__git-tools__git_push",
         "hooks": [
           {
             "type": "command",
-            "command": "ruff check . 2>&1 | tail -10",
-            "timeout": 10
+            "command": "bash hooks/no-push-main.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/no-push-main.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__MCP_DOCKER__merge_pull_request|mcp__github-tools__github_pr_auto_merge",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/gate-before-merge.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/gate-before-merge.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/tier-before-coder.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/tier-before-coder.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
+          },
+          {
+            "type": "command",
+            "command": "bash hooks/require-skills-block.sh; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: hooks/require-skills-block.sh -- enforcement offline. Run /sync-template to restore hooks/.' >&2; exit 2; fi; exit $c"
           }
         ]
       }
     ],
     "SubagentStop": [
       {
-        "matcher": "^(coder|python-coder|code-reviewer|tester|architect)$",
+        "matcher": "^(coder|code-reviewer|tester|architect)$",
         "hooks": [
           {
             "type": "command",
             "command": "echo 'PIPELINE: Agent finished. Review workstream status and advance if ready.'"
+          }
+        ]
+      },
+      {
+        "matcher": "coder|dotnet-coder|rust-coder|java-coder|python-coder|code-reviewer",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash hooks/enforce-agent-contract.sh"
           }
         ]
       }

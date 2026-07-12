@@ -1,0 +1,25 @@
+# Normalize line endings. prettier (endOfLine:lf), Linux CI, and any
+# determinism hash expect LF; CRLF drift on Windows checkouts silently
+# breaks CI. text=auto auto-detects text vs binary; eol=lf stores and
+# checks out text files with LF on every platform.
+* text=auto eol=lf
+
+# Binary files — never normalize.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+*.gz binary
+*.zip binary
+*.pdf binary
+*.mp3 binary
+*.wav binary
+*.ogg binary
