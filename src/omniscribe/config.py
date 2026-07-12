@@ -45,6 +45,7 @@ class OmniScribeConfig(BaseSettings):
     # ── OCR ──────────────────────────────────────────────
     ocr_enabled: bool = True
     ocr_language: str = "en"
+    ocr_mask_auto_captions: bool = True
     ocr_sample_fps: float = 1.0
     ocr_min_confidence: float = 0.6
     ocr_device: str = "cuda"
@@ -177,6 +178,36 @@ class OmniScribeConfig(BaseSettings):
         if v < 0.0:
             raise ValueError(f"dedup_min_duration must be >= 0.0; got {v!r}")
         return v
+
+    @field_validator("ocr_language", mode="after")
+    @classmethod
+    def _validate_ocr_language(cls, v: str) -> str:
+        """Accept ``"auto"``, valid :class:`rapidocr.LangRec` values, and mapped ISO 639-1 codes.
+
+        Unmapped arbitrary strings are rejected early so the user gets a
+        clear misconfiguration error before the OCR engine initialises.
+        """
+        from rapidocr import LangRec
+
+        # 1. Valid LangRec member? (e.g. "en", "latin", "ch")
+        try:
+            LangRec(v)
+            return v
+        except ValueError:
+            pass
+
+        # 2. "auto" — resolved at runtime via ASR-detected language
+        if v == "auto":
+            return v
+
+        # 3. Mapped ISO 639-1 code? (see rapid_ocr.py _ISO_TO_LANGREC)
+        from omniscribe.ocr.rapid_ocr import _ISO_TO_LANGREC
+
+        if v in _ISO_TO_LANGREC:
+            return v
+
+        allowed = ", ".join(sorted({"auto"} | {m.value for m in LangRec} | set(_ISO_TO_LANGREC)))
+        raise ValueError(f"ocr_language must be one of: {allowed}; got {v!r}")
 
     @field_validator("merge_similarity_threshold", mode="after")
     @classmethod

@@ -63,6 +63,7 @@ class PlatformProfile:
 
     name: str
     ui_exclusion_zones: tuple[RelativeRect, ...] = ()
+    auto_caption_zones: tuple[RelativeRect, ...] = ()
     ui_text_patterns: tuple[re.Pattern[str], ...] = ()
     frequency_threshold: float = 0.95
 

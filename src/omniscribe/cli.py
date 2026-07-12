@@ -309,7 +309,9 @@ def process_single_video(
             profile = resolve_profile(config, source)
             ocr_engine = RapidOCREngine(config, profile=profile)
             funnel = FunnelCounts()
-            ocr_segments = ocr_engine.extract(video_path, funnel=funnel)
+            ocr_segments = ocr_engine.extract(
+                video_path, detected_language=detected_language, funnel=funnel
+            )
             logger.info(
                 "OCR: %d segments from %d frames",
                 len(ocr_segments),

@@ -184,12 +184,13 @@ def test_filter_by_frequency_fuzzy_keeps_distinct_text() -> None:
 # --- Sprint 7.1 (c) mask integration: TikTok caption band is zeroed -------
 def test_mask_zones_tiktok_profile_zeros_caption_band() -> None:
     # 1080x1920 all-white synthetic frame run through the live TikTok
-    # profile. The new auto-caption band (mid-lower screen) MUST contain
-    # a zeroed pixel after masking. We pick a representative pixel inside
-    # the documented band y∈[0.55, 0.78].
+    # profile. The auto-caption band (now on ``auto_caption_zones``, mid-lower
+    # screen) MUST contain a zeroed pixel when the combined mask zones include
+    # it. We pick a representative pixel inside the documented band y∈[0.55, 0.78].
     height, width = 1920, 1080
     gray = np.full((height, width), 255, dtype=np.uint8)
-    masked = mask_zones(gray, TIKTOK_PROFILE.ui_exclusion_zones)
+    all_zones = TIKTOK_PROFILE.ui_exclusion_zones + TIKTOK_PROFILE.auto_caption_zones
+    masked = mask_zones(gray, all_zones)
     # Sample point at roughly y=0.65 (mid-band), x=0.5 (centre).
     sample_y = int(0.65 * height)
     sample_x = int(0.5 * width)

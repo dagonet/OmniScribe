@@ -99,7 +99,7 @@ class TestCaptionBandZones:
 
     @staticmethod
     def _has_caption_band_rect(profile: PlatformProfile) -> bool:
-        for rect in profile.ui_exclusion_zones:
+        for rect in profile.auto_caption_zones:
             y_min = rect.y
             y_max = rect.y + rect.h
             if 0.40 <= y_min < y_max <= 0.85:
