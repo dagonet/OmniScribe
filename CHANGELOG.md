@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-12
+
+### Changed
+
+- **`ocr_language` default flipped from `"en"` to `"auto"`** (#33). OCR now resolves the recognition language at runtime using the ASR-detected language. Falls back to EN when detection is unavailable or unmapped. Latin rec model preserves umlauts/accents on German/French/Spanish/etc. content.
+
+### Added
+
+- **ISO-639 language mapping** (#32). 50+ ISO 639-1 codes mapped to PP-OCRv4 recognition models. Latin-script languages (de/fr/es/…) → `latin` rec model; Cyrillic → `cyrillic`, Slavic → `eslav`, CJK → `ch`/`japan`/`korean`. Config field_validator accepts `"auto"`, all LangRec values, and mapped ISO codes; rejects unknown values at construction.
+- **Toggleable auto-caption mask** (#32). New `ocr_mask_auto_captions` config flag (default `true`, env `OMNI_OCR_MASK_AUTO_CAPTIONS`). Caption-band zones moved from `ui_exclusion_zones` to `auto_caption_zones` on TikTok/Instagram profiles — mask them independently of UI exclusion zones.
+- **CLI wiring**: `detected_language` from ASR passed to OCR engine for runtime language resolution (#32).
+
+## [0.1.2] - 2026-07-12
+
 ### Added
 
 - **Docker containerization** (Phase 5). Single-stage `nvidia/cuda:12.6.3-runtime-ubuntu22.04` image with Whisper `large-v3-turbo` and RapidOCR models pre-downloaded. GPU passthrough via NVIDIA Container Toolkit; CPU fallback via `OMNI_WHISPER_DEVICE=cpu`. Added missing `opencv-python-headless` dependency.
