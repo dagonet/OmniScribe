@@ -162,7 +162,7 @@ def filter_by_frequency(
     if frame_count == 0:
         return list(segments)
 
-    if isinstance(frame_count, (int, float)) and 0 < frame_count < min_frame_count:
+    if 0 < frame_count < min_frame_count:
         logger.debug(
             "frequency filter skipped: frame_count=%d < min_frame_count=%d",
             frame_count,
