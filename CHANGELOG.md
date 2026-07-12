@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Column-aware line splitting (`aggregate_frame_bboxes`)**: aggregator now retains x-extents and splits same-y-line boxes at gaps > 2.0x frame-wide mean box height; word gaps stay joined, column gutters split. New ``x_gap_tolerance_ratio`` parameter (default ``2.0``). Target: sample-1 infographic recall >= 0.5 (from 0.25), precision materially up from 0.047.
+- **Greedy triple eval matching**: 3-line GT texts now matchable via greedy extend-best-pair; gated to run only when singles+pairs fall below threshold. New ``_best_triple_extension`` helper. Target: sample-2 recall 0.833 -> 1.0.
+
 ## [0.1.4] - 2026-07-12
 
 ### Fixed

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from typing import TYPE_CHECKING
 
 from rapidfuzz import fuzz
@@ -151,6 +152,61 @@ def _best_pair_match(
     return (None, 0.0, set())
 
 
+def _best_triple_extension(
+    gt_text: str,
+    indexed_candidates: list[tuple[int, TranscriptSegment]],
+    pair_indices: set[int],
+    max_span: float,
+) -> tuple[str | None, float, set[int]]:
+    """Extend the best pair to a triple match -- greedy extend-best-pair.
+
+    NOT full C(n,3). The target case is a 3-line title where all lines
+    coexist; the best-scoring pair is two of the three true lines, so
+    extending it finds the third at O(n) instead of O(n\N{SUPERSCRIPT THREE}).
+    Full-search escalation is a documented fallback if measurement still
+    misses.
+
+    For each remaining candidate (index not in *pair_indices*), form the
+    3-segment set; span-gate via ``max(starts) - min(starts) <= max_span``;
+    try all 6 join orders via ``itertools.permutations``.
+
+    Returns ``(joined, sim, {i, j, k})`` or ``(None, 0.0, set())``.
+    """
+    cand_by_idx = dict(indexed_candidates)
+
+    # Look up the pair's segments.
+    pair_segs: dict[int, TranscriptSegment] = {}
+    for idx in pair_indices:
+        if idx in cand_by_idx:
+            pair_segs[idx] = cand_by_idx[idx]
+
+    best_joined: str | None = None
+    best_sim = 0.0
+    best_indices: set[int] = set()
+
+    for idx, seg in indexed_candidates:
+        if idx in pair_indices:
+            continue
+        # Form the 3-segment set and check span gate.
+        triple = {idx: seg, **pair_segs}
+        starts = [s.start for s in triple.values()]
+        if max(starts) - min(starts) > max_span:
+            continue
+        # Try all 6 join orders.
+        texts = [s.text for s in triple.values()]
+        for perm in itertools.permutations(texts, 3):
+            joined = " ".join(perm)
+            sim = fuzz.ratio(joined, gt_text, processor=str.lower) / 100.0
+            if sim > best_sim:
+                best_sim = sim
+                best_joined = joined
+                best_indices = set(triple.keys())
+
+    if best_indices:
+        return (best_joined, best_sim, best_indices)
+    return (None, 0.0, set())
+
+
 def _build_similarity_lookup(
     segments: list[TranscriptSegment],
     ground_truth: GroundTruth,
@@ -193,6 +249,18 @@ def _build_similarity_lookup(
                 best_sim = pair_sim
                 best_candidate = joined_text
                 pair_indices = p_indices
+
+        # Pass 3: greedy triple extension (Sprint 9.3).
+        # Gated: run only when singles+pairs still below threshold, at least
+        # 3 candidates exist, and a non-empty pair was found in pass 2.
+        if best_sim < fuzzy_threshold and len(indexed_candidates) >= 3 and pair_indices:
+            joined_text, triple_sim, t_indices = _best_triple_extension(
+                expected.text, indexed_candidates, pair_indices, _PAIR_MAX_SPAN_S
+            )
+            if triple_sim > best_sim:
+                best_sim = triple_sim
+                best_candidate = joined_text
+                pair_indices = t_indices
 
         lookup[expected.text] = (best_candidate, best_sim, pair_indices)
     return lookup

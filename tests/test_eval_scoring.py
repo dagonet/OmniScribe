@@ -288,3 +288,45 @@ class TestScoreVideo:
         result = score_video(segments, gt, fuzzy_threshold=0.85)
         assert result.recall == 1.0
         assert result.precision == 1.0
+
+    # ── Sprint 9.3: Greedy triple eval matching ────────────────────────────
+
+    def test_three_segments_triple_match_multiline_gt(self) -> None:
+        """3 same-start segments whose 3-way join matches a 3-line GT."""
+        segments = [_seg("Line 1", 0.0), _seg("Line 2", 0.0), _seg("Line 3", 0.0)]
+        gt = _gt([("Line 1 Line 2 Line 3", True, 0.0, 5.0)])
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 1.0
+        # All 3 indices counted in precision
+        assert result.precision == 1.0
+
+    def test_triple_not_run_when_pair_suffices(self) -> None:
+        """A pair already >= threshold -> match via pair, not triple."""
+        segments = [_seg("Hello", 1.0), _seg("World", 1.0)]
+        gt = _gt([("Hello World", True, 0.0, 5.0)])
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 1.0
+        assert result.precision == 1.0
+
+    def test_triple_span_gate(self) -> None:
+        """Third segment 5 s away from pair -> no triple; GT stays unmatched."""
+        segments = [_seg("Line 1", 0.0), _seg("Line 2", 0.5), _seg("Line 3", 5.0)]
+        gt = _gt([("Line 1 Line 2 Line 3", True, 0.0, 10.0)])
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        # pair "Line 1 Line 2" scores ~0.78 (< 0.85); triple blocked by span gate
+        assert result.recall == 0.0
+
+    def test_triple_permutation_order_independent(self) -> None:
+        """Triple with segments in scrambled order still matches."""
+        segments = [_seg("World", 0.0), _seg("Hello", 0.0), _seg("Cruel", 0.0)]
+        gt = _gt([("Hello Cruel World", True, 0.0, 5.0)])
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 1.0
+        assert result.precision == 1.0
+
+    def test_triple_does_not_false_match_unrelated_text(self) -> None:
+        """3 unrelated segments vs a distinct GT -> no match at threshold."""
+        segments = [_seg("Apple", 0.0), _seg("Banana", 0.0), _seg("Cherry", 0.0)]
+        gt = _gt([("Hello World", True, 0.0, 5.0)])
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 0.0
