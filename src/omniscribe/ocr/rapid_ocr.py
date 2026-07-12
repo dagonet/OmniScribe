@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from omniscribe.config import OmniScribeConfig
+    from omniscribe.eval.funnel import FunnelCounts
     from omniscribe.platforms.base import PlatformProfile
 
 logger = logging.getLogger(__name__)
@@ -80,11 +81,14 @@ class RapidOCREngine:
                 "Loading RapidOCR on %s — first run may download ~15 MB of ONNX models",
                 self._config.ocr_device,
             )
+            # Detection model: en covers all latin-script languages.
+            # Recognition model: uses actual language for character set.
+            det_lang = LangRec.EN if lang == LangRec.LATIN else lang
             params: dict[str, object] = {
                 "EngineConfig.onnxruntime.use_cuda": use_cuda,
                 "EngineConfig.onnxruntime.cuda_ep_cfg.device_id": 0,
                 "Rec.lang_type": lang,
-                "Det.lang_type": lang,
+                "Det.lang_type": det_lang,
             }
             try:
                 self._engine = RapidOCR(params=params)
@@ -94,7 +98,9 @@ class RapidOCREngine:
                 ) from exc
         return self._engine
 
-    def extract(self, video_path: Path) -> list[TranscriptSegment]:
+    def extract(
+        self, video_path: Path, *, funnel: FunnelCounts | None = None
+    ) -> list[TranscriptSegment]:
         """Sample frames from ``video_path`` and return on-screen text segments.
 
         Each yielded RapidOCR result contributes zero or more
@@ -106,6 +112,9 @@ class RapidOCREngine:
         inside the aggregator before grouping. ``start == end`` equals the
         frame timestamp (sampled text has no intrinsic duration); cross-frame
         dedup grows the span downstream.
+
+        When ``funnel`` is provided, stage-wise counts are recorded on the
+        :class:`FunnelCounts` instance for pipeline diagnostics.
         """
         engine = self._ensure_loaded()
         threshold = self._config.ocr_min_confidence
@@ -141,12 +150,16 @@ class RapidOCREngine:
             texts = texts_attr if texts_attr is not None else ()
             scores_attr = getattr(result, "scores", None)
             scores = scores_attr if scores_attr is not None else ()
+            if funnel is not None:
+                funnel.raw_bboxes += len(boxes)
             aggregated = aggregate_frame_bboxes(
                 boxes,
                 texts,
                 scores,
                 min_confidence=threshold,
             )
+            if funnel is not None:
+                funnel.post_aggregation += len(aggregated)
             for text, mean_score in aggregated:
                 segments.append(
                     TranscriptSegment(
@@ -158,5 +171,7 @@ class RapidOCREngine:
                         language=language,
                     )
                 )
+        if funnel is not None:
+            funnel.post_extract += len(segments)
         self.last_frame_count = frame_count
         return segments

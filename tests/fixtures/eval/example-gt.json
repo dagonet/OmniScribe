@@ -1,0 +1,15 @@
+{
+  "language": "en",
+  "expected_texts": [
+    {
+      "text": "Hello World",
+      "start": 0.0,
+      "end": 5.0,
+      "required": true
+    },
+    {
+      "text": "SUBSCRIBE",
+      "required": false
+    }
+  ]
+}
