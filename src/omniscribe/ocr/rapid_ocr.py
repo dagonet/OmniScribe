@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from omniscribe.config import OmniScribeConfig
+    from omniscribe.eval.funnel import FunnelCounts
     from omniscribe.platforms.base import PlatformProfile
 
 logger = logging.getLogger(__name__)
@@ -94,7 +95,9 @@ class RapidOCREngine:
                 ) from exc
         return self._engine
 
-    def extract(self, video_path: Path) -> list[TranscriptSegment]:
+    def extract(
+        self, video_path: Path, *, funnel: FunnelCounts | None = None
+    ) -> list[TranscriptSegment]:
         """Sample frames from ``video_path`` and return on-screen text segments.
 
         Each yielded RapidOCR result contributes zero or more
@@ -106,6 +109,9 @@ class RapidOCREngine:
         inside the aggregator before grouping. ``start == end`` equals the
         frame timestamp (sampled text has no intrinsic duration); cross-frame
         dedup grows the span downstream.
+
+        When ``funnel`` is provided, stage-wise counts are recorded on the
+        :class:`FunnelCounts` instance for pipeline diagnostics.
         """
         engine = self._ensure_loaded()
         threshold = self._config.ocr_min_confidence
@@ -141,12 +147,16 @@ class RapidOCREngine:
             texts = texts_attr if texts_attr is not None else ()
             scores_attr = getattr(result, "scores", None)
             scores = scores_attr if scores_attr is not None else ()
+            if funnel is not None:
+                funnel.raw_bboxes += len(boxes)
             aggregated = aggregate_frame_bboxes(
                 boxes,
                 texts,
                 scores,
                 min_confidence=threshold,
             )
+            if funnel is not None:
+                funnel.post_aggregation += len(aggregated)
             for text, mean_score in aggregated:
                 segments.append(
                     TranscriptSegment(
@@ -158,5 +168,7 @@ class RapidOCREngine:
                         language=language,
                     )
                 )
+        if funnel is not None:
+            funnel.post_extract += len(segments)
         self.last_frame_count = frame_count
         return segments

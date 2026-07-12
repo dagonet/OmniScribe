@@ -32,6 +32,7 @@ from omniscribe.batch import (
 )
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
+from omniscribe.eval.funnel import FunnelCounts
 from omniscribe.merge.llm_cleanup import cleanup_ocr_segments, cleanup_speech_segments
 from omniscribe.ocr.deduplicator import dedup_segments
 from omniscribe.ocr.rapid_ocr import RapidOCREngine
@@ -307,7 +308,8 @@ def process_single_video(
         if ocr_active:
             profile = resolve_profile(config, source)
             ocr_engine = RapidOCREngine(config, profile=profile)
-            ocr_segments = ocr_engine.extract(video_path)
+            funnel = FunnelCounts()
+            ocr_segments = ocr_engine.extract(video_path, funnel=funnel)
             logger.info(
                 "OCR: %d segments from %d frames",
                 len(ocr_segments),
@@ -316,6 +318,7 @@ def process_single_video(
             if config.ui_filter_enabled:
                 pre_pattern = len(ocr_segments)
                 ocr_segments = filter_by_patterns(ocr_segments, profile.ui_text_patterns)
+                funnel.post_pattern_filter = len(ocr_segments)
                 post_pattern = len(ocr_segments)
                 # frame_count is yielded frames (may be scene-change-reduced from nominal fps * duration)
                 ocr_segments = filter_by_frequency(
@@ -323,6 +326,7 @@ def process_single_video(
                     ocr_engine.last_frame_count,
                     profile.frequency_threshold,
                 )
+                funnel.post_frequency_filter = len(ocr_segments)
                 post_freq = len(ocr_segments)
                 logger.info(
                     "UI filter: dropped %d pattern-matches, %d frequency-hits",
@@ -335,11 +339,16 @@ def process_single_video(
                 min_duration=config.dedup_min_duration,
                 gap_tolerance=2.0 / config.ocr_sample_fps,
             )
+            funnel.post_dedup = len(deduped_ocr_segments)
             segments = merge_channels(
                 speech_segments,
                 deduped_ocr_segments,
                 threshold=config.merge_similarity_threshold,
             )
+            funnel.final_on_screen_both = sum(
+                1 for s in segments if s.source in ("ON-SCREEN", "BOTH")
+            )
+            logger.debug("OCR pipeline funnel:\n%s", funnel.report())
         else:
             segments = speech_segments
 
