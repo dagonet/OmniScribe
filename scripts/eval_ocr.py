@@ -52,6 +52,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Collect and print funnel diagnostics.",
     )
     parser.add_argument(
+        "--no-scene-change",
+        action="store_true",
+        help="Disable scene-change detection (sample every frame at fps rate).",
+    )
+    parser.add_argument(
+        "--no-ui-filter",
+        action="store_true",
+        help="Disable pattern and frequency UI filters.",
+    )
+    parser.add_argument(
         "--output",
         "-o",
         type=str,
@@ -76,7 +86,10 @@ def main() -> None:
 
     # Build config overridden for evaluation.
     config = OmniScribeConfig()
-    config = config.model_copy(update={"ocr_language": ocr_language})
+    config_updates: dict[str, object] = {"ocr_language": ocr_language}
+    if args.no_scene_change:
+        config_updates["scene_change_enabled"] = False
+    config = config.model_copy(update=config_updates)
 
     # Resolve platform profile.
     profile = resolve_profile(config, args.video)
@@ -87,7 +100,7 @@ def main() -> None:
     ocr_segments = ocr_engine.extract(Path(args.video), funnel=funnel)
 
     # UI filters -- same order as cli.py process_single_video.
-    if config.ui_filter_enabled and profile is not None:
+    if (not args.no_ui_filter) and config.ui_filter_enabled and profile is not None:
         ocr_segments = filter_by_patterns(ocr_segments, profile.ui_text_patterns)
         if funnel is not None:
             funnel.post_pattern_filter = len(ocr_segments)
@@ -99,6 +112,9 @@ def main() -> None:
         )
         if funnel is not None:
             funnel.post_frequency_filter = len(ocr_segments)
+    elif funnel is not None:
+        funnel.post_pattern_filter = len(ocr_segments)
+        funnel.post_frequency_filter = len(ocr_segments)
 
     # Dedup.
     deduped = dedup_segments(

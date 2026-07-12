@@ -81,11 +81,14 @@ class RapidOCREngine:
                 "Loading RapidOCR on %s — first run may download ~15 MB of ONNX models",
                 self._config.ocr_device,
             )
+            # Detection model: en covers all latin-script languages.
+            # Recognition model: uses actual language for character set.
+            det_lang = LangRec.EN if lang == LangRec.LATIN else lang
             params: dict[str, object] = {
                 "EngineConfig.onnxruntime.use_cuda": use_cuda,
                 "EngineConfig.onnxruntime.cuda_ep_cfg.device_id": 0,
                 "Rec.lang_type": lang,
-                "Det.lang_type": lang,
+                "Det.lang_type": det_lang,
             }
             try:
                 self._engine = RapidOCR(params=params)
