@@ -196,3 +196,95 @@ class TestScoreVideo:
         # "SUBSCRIBE!" vs "SUBSCRIBE" with str.lower should be ~97+%
         assert result.recall == 1.0
         assert result.per_text_results[0]["matched"] is True
+
+    # ── Sprint 9.2: Pairwise multi-line matching ─────────────────────────
+
+    def test_two_segments_pair_to_match_multiline_gt(self) -> None:
+        """Two same-timestamp segments whose join matches a multi-line GT."""
+        segments = [_seg("Hello", 1.0), _seg("World", 1.0)]
+        gt = _gt(
+            [
+                ("Hello World", True, 0.0, 5.0),
+            ]
+        )
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 1.0
+        assert result.per_text_results[0]["best_candidate"] == "Hello World"
+
+    def test_pair_join_order_independent(self) -> None:
+        """Segments supplied in reverse reading order still match (both join orders tried)."""
+        segments = [_seg("World", 1.0), _seg("Hello", 1.0)]
+        gt = _gt(
+            [
+                ("Hello World", True, 0.0, 5.0),
+            ]
+        )
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 1.0
+
+    def test_interleaved_noise_segment_does_not_block_pairing(self) -> None:
+        """An unrelated same-timestamp segment that sorts between the pair does NOT block the match."""
+        segments = [_seg("Hello", 1.0), _seg("UNRELATED", 1.0), _seg("World", 1.0)]
+        gt = _gt(
+            [
+                ("Hello World", True, 0.0, 5.0),
+            ]
+        )
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 1.0
+
+    def test_segments_beyond_max_span_not_paired(self) -> None:
+        """Two segments with starts > 2.0s apart do not pair (GT stays unmatched)."""
+        segments = [_seg("Hello", 0.0), _seg("World", 5.0)]
+        gt = _gt(
+            [
+                ("Hello World", True, 0.0, 10.0),
+            ]
+        )
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 0.0
+
+    def test_pair_match_counts_both_segments_in_precision(self) -> None:
+        """A pair match puts BOTH segment indices in the precision numerator."""
+        segments = [_seg("Hello", 1.0), _seg("World", 1.0)]
+        gt = _gt(
+            [
+                ("Hello World", True, 0.0, 5.0),
+            ]
+        )
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 1.0
+        assert result.precision == 1.0
+
+    def test_individually_matched_segment_still_counts_in_precision(self) -> None:
+        """A segment that matches some GT >= threshold still counts in precision
+        even when it is not that GT's best candidate (multiple segments match
+        the same GT but only one is labelled 'best')."""
+        segments = [_seg("Hello World", 1.0), _seg("HELLO WORLD", 2.0)]
+        gt = _gt(
+            [
+                ("Hello World", True, 0.0, 5.0),
+            ]
+        )
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 1.0
+        # Both match "Hello World" at 1.0 (case-insensitive via str.lower).
+        # Index 1 is NOT the best_candidate but still individually matched.
+        assert result.precision == 1.0
+
+    def test_mixed_single_and_pair_matches(self) -> None:
+        """One GT matched by single segment + one GT matched by a pair."""
+        segments = [
+            _seg("Hello World", 1.0),
+            _seg("Line 1", 2.0),
+            _seg("Line 2", 2.0),
+        ]
+        gt = _gt(
+            [
+                ("Hello World", True, 0.0, 5.0),
+                ("Line 1 Line 2", True, 0.0, 5.0),
+            ]
+        )
+        result = score_video(segments, gt, fuzzy_threshold=0.85)
+        assert result.recall == 1.0
+        assert result.precision == 1.0

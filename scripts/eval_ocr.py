@@ -109,6 +109,7 @@ def main() -> None:
             ocr_segments,
             ocr_engine.last_frame_count,
             profile.frequency_threshold,
+            min_frame_count=config.ocr_frequency_min_frame_count,
         )
         if funnel is not None:
             funnel.post_frequency_filter = len(ocr_segments)

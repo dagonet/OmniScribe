@@ -13,6 +13,11 @@ if TYPE_CHECKING:
 
 _NEAR_MISS_LOWER: float = 0.50
 
+# Maximum start-time span (in seconds) for pairing two segments to match a
+# multi-line GT text. 0 s covers same-frame line pairs; 2.0 s covers a second
+# line first OCR'd one sample-frame later at default 1 fps sampling.
+_PAIR_MAX_SPAN_S: float = 2.0
+
 
 def score_video(
     segments: list[TranscriptSegment],
@@ -43,12 +48,15 @@ def score_video(
     total_required = 0
     matched_required = 0
     match_similarities: list[float] = []
+    all_pair_indices: set[int] = set()
 
     for expected in ground_truth.expected_texts:
         entry = similarity_lookup.get(expected.text)
         if entry is not None:
-            best_candidate, similarity = entry
+            best_candidate, similarity, pair_indices = entry
             matched = similarity >= fuzzy_threshold
+            if matched:
+                all_pair_indices |= pair_indices
         else:
             best_candidate = None
             similarity = None
@@ -82,8 +90,10 @@ def score_video(
     if not segments:
         precision = 1.0
     else:
-        matched_segments = _count_matched_segments(segments, ground_truth, fuzzy_threshold)
-        precision = matched_segments / len(segments)
+        individually_matched = _individually_matched_indices(
+            segments, ground_truth, fuzzy_threshold
+        )
+        precision = len(individually_matched | all_pair_indices) / len(segments)
 
     mean_match_similarity = (
         sum(match_similarities) / len(match_similarities) if match_similarities else None
@@ -98,48 +108,108 @@ def score_video(
     )
 
 
+def _best_pair_match(
+    gt_text: str,
+    indexed_candidates: list[tuple[int, TranscriptSegment]],
+    max_span: float,
+) -> tuple[str | None, float, set[int]]:
+    """Find the best pair of segments whose joined text matches the GT.
+
+    Tries both join orders (``f"{a.text} {b.text}"`` and
+    ``f"{b.text} {a.text}"``) with the same ``fuzz.ratio`` call pattern as
+    single-segment matching.  Only pairs whose start-time difference is
+    within ``max_span`` seconds are considered.
+
+    Returns ``(joined_text, similarity, {i, j})`` or
+    ``(None, 0.0, set())`` when no pairs exist within the span constraint.
+    """
+    best_joined: str | None = None
+    best_sim = 0.0
+    best_indices: set[int] = set()
+
+    for i in range(len(indexed_candidates)):
+        idx_i, seg_i = indexed_candidates[i]
+        for j in range(i + 1, len(indexed_candidates)):
+            idx_j, seg_j = indexed_candidates[j]
+            if abs(seg_j.start - seg_i.start) > max_span:
+                continue
+
+            order1 = f"{seg_i.text} {seg_j.text}"
+            order2 = f"{seg_j.text} {seg_i.text}"
+
+            sim1 = fuzz.ratio(order1, gt_text, processor=str.lower) / 100.0
+            sim2 = fuzz.ratio(order2, gt_text, processor=str.lower) / 100.0
+
+            sim = max(sim1, sim2)
+            if sim > best_sim:
+                best_sim = sim
+                best_joined = order1 if sim1 >= sim2 else order2
+                best_indices = {idx_i, idx_j}
+
+    if best_indices:
+        return (best_joined, best_sim, best_indices)
+    return (None, 0.0, set())
+
+
 def _build_similarity_lookup(
     segments: list[TranscriptSegment],
     ground_truth: GroundTruth,
     fuzzy_threshold: float,
-) -> dict[str, tuple[str | None, float]]:
-    """For each GT text, find the best-matching output segment.
+) -> dict[str, tuple[str | None, float, set[int]]]:
+    """For each GT text, find the best-matching output segment(s).
 
-    Returns a dict keyed by ``expected.text``, with ``(best_candidate, similarity)``.
-    Segments outside the time window (when the GT specifies one) are excluded.
-    Segments below ``fuzzy_threshold`` are still recorded (for near-miss reporting);
-    the caller decides what counts as a "match".
+    Returns a dict keyed by ``expected.text``, with
+    ``(best_candidate, similarity, pair_indices)``.  ``pair_indices`` is empty
+    when a single segment wins.  Segments outside the time window (when the GT
+    specifies one) are excluded.
     """
-    lookup: dict[str, tuple[str | None, float]] = {}
+    lookup: dict[str, tuple[str | None, float, set[int]]] = {}
     for expected in ground_truth.expected_texts:
         best_candidate: str | None = None
         best_sim = 0.0
-        for seg in segments:
+        pair_indices: set[int] = set()
+
+        # Pass 1: single segments (existing logic — unchanged).
+        indexed_candidates: list[tuple[int, TranscriptSegment]] = []
+        for idx, seg in enumerate(segments):
             # Time-window filter.
             if expected.start is not None and seg.end < expected.start:
                 continue
             if expected.end is not None and seg.start > expected.end:
                 continue
+            indexed_candidates.append((idx, seg))
             sim = fuzz.ratio(seg.text, expected.text, processor=str.lower) / 100.0
             if sim > best_sim:
                 best_sim = sim
                 best_candidate = seg.text
-        lookup[expected.text] = (best_candidate, best_sim)
+                pair_indices = set()
+
+        # Pass 2: pairwise matching (Sprint 9.2).
+        if len(indexed_candidates) >= 2:
+            joined_text, pair_sim, p_indices = _best_pair_match(
+                expected.text, indexed_candidates, _PAIR_MAX_SPAN_S
+            )
+            if pair_sim > best_sim:
+                best_sim = pair_sim
+                best_candidate = joined_text
+                pair_indices = p_indices
+
+        lookup[expected.text] = (best_candidate, best_sim, pair_indices)
     return lookup
 
 
-def _count_matched_segments(
+def _individually_matched_indices(
     segments: list[TranscriptSegment],
     ground_truth: GroundTruth,
     fuzzy_threshold: float,
-) -> int:
-    """Count output segments that fuzzy-match at least one GT text.
+) -> set[int]:
+    """Return indices of output segments that fuzzy-match at least one GT text.
 
     Respects time windows: a segment only matches a GT text when
     it falls within the GT's start/end window (if specified).
     """
-    matched = 0
-    for seg in segments:
+    matched: set[int] = set()
+    for idx, seg in enumerate(segments):
         for expected in ground_truth.expected_texts:
             # Time-window filter.
             if expected.start is not None and seg.end < expected.start:
@@ -148,6 +218,6 @@ def _count_matched_segments(
                 continue
             sim = fuzz.ratio(seg.text, expected.text, processor=str.lower) / 100.0
             if sim >= fuzzy_threshold:
-                matched += 1
+                matched.add(idx)
                 break
     return matched

@@ -34,12 +34,15 @@ ratio.
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from typing import TYPE_CHECKING
 
 import cv2
 
 from omniscribe.ocr._text_match import _canonical_key, _fuzzy_match
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     import re
@@ -111,6 +114,7 @@ def filter_by_frequency(
     threshold: float,
     *,
     fuzzy_threshold: float = 90.0,
+    min_frame_count: int = 0,
 ) -> list[TranscriptSegment]:
     """Drop ON-SCREEN segments whose normalised text appears in too many frames.
 
@@ -148,8 +152,22 @@ def filter_by_frequency(
         cluster. Default 90.0 — tight enough to keep legitimate captions
         apart, loose enough to collapse common SUBSCRIBE / handle / arrow
         variants.
+    min_frame_count:
+        Minimum ``frame_count`` required for the filter to run.  When
+        ``0 < frame_count < min_frame_count`` the filter is skipped and the
+        input list is returned unchanged (guard for short clips where even
+        legitimate text clears the ratio threshold).  Default 0 = disabled,
+        so existing callers see byte-identical behaviour.
     """
     if frame_count == 0:
+        return list(segments)
+
+    if isinstance(frame_count, (int, float)) and 0 < frame_count < min_frame_count:
+        logger.debug(
+            "frequency filter skipped: frame_count=%d < min_frame_count=%d",
+            frame_count,
+            min_frame_count,
+        )
         return list(segments)
 
     # Build per-canonical-key counts first (cheap exact-match pass).
