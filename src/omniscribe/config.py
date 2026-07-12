@@ -44,7 +44,7 @@ class OmniScribeConfig(BaseSettings):
 
     # ── OCR ──────────────────────────────────────────────
     ocr_enabled: bool = True
-    ocr_language: str = "en"
+    ocr_language: str = "auto"
     ocr_mask_auto_captions: bool = True
     ocr_sample_fps: float = 1.0
     ocr_min_confidence: float = 0.6

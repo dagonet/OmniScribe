@@ -176,13 +176,13 @@ def test_merge_similarity_threshold_boundaries_accepted(
 # ── ocr_language validator ──────────────────────────────────────────
 
 
-def test_ocr_language_default_is_en(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Default ocr_language is 'en' (no baseline move)."""
+def test_ocr_language_default_is_auto(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default ocr_language is 'auto' — resolved at runtime via ASR detections."""
     _strip_omni_env(monkeypatch)
 
     cfg = OmniScribeConfig()
 
-    assert cfg.ocr_language == "en"
+    assert cfg.ocr_language == "auto"
 
 
 def test_ocr_language_accepts_auto(monkeypatch: pytest.MonkeyPatch) -> None:
