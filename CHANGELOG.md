@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-13
+
 ### Fixed
 
-- **Column-aware line splitting (`aggregate_frame_bboxes`)**: aggregator now retains x-extents and splits same-y-line boxes at gaps > 2.0x frame-wide mean box height; word gaps stay joined, column gutters split. New ``x_gap_tolerance_ratio`` parameter (default ``2.0``). Target: sample-1 infographic recall >= 0.5 (from 0.25), precision materially up from 0.047.
-- **Greedy triple eval matching**: 3-line GT texts now matchable via greedy extend-best-pair; gated to run only when singles+pairs fall below threshold. New ``_best_triple_extension`` helper. Target: sample-2 recall 0.833 -> 1.0.
+- **Column-aware line splitting (`aggregate_frame_bboxes`)** (#39): aggregator now retains x-extents and splits same-y-line boxes at gaps > 2.0x frame-wide mean box height; word gaps stay joined, column gutters split. New ``x_gap_tolerance_ratio`` parameter (default ``2.0``). GPU-measured: split granularity confirmed (85 → 132 segments on the infographic sample); that sample's recall remains detection-limited — small dense text never reaches OCR output (tracked in #41).
+- **Greedy triple eval matching** (#39): 3-line GT texts now matchable via greedy extend-best-pair; gated to run only when singles+pairs fall below threshold. New ``_best_triple_extension`` helper. GPU-verified: sample-2 recall 0.833 → 1.0; sample-3 unchanged at 1.0.
 
 ## [0.1.4] - 2026-07-12
 
@@ -127,6 +129,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.1.5]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.5
 [0.1.4]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.4
 [0.1.3]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.3
 [0.1.2]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.2
