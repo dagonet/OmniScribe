@@ -23,3 +23,5 @@ You write tests. When given a feature or module:
 4. Run them to verify they pass
 
 Focus on behavior, not implementation details.
+
+If your spawn prompt contains a `## Required Skills` block: invoke each listed skill via the Skill tool as your FIRST action, and name the skills you invoked in your final report.
