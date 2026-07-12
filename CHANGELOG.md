@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-12
+
 ### Fixed
 
-- **Multi-line eval matching**: GT texts spanning multiple visual lines now match when OCR emits per-line segments; scoring tries pairwise concatenation (both orders) of segments within a 2.0 s start-span window; precision counts pair participants via union with the existing per-segment semantics.
+- **Multi-line eval matching**: GT texts spanning multiple visual lines now match when OCR emits per-line segments; scoring tries pairwise concatenation (both orders) of segments within a 2.0 s start-span window; precision counts pair participants via union with the existing per-segment semantics. Verified on GPU: sample-3 recall 0.5 → 1.0, precision 0.333 → 0.667.
 - **Frequency-filter min-frame guard**: new ``ocr_frequency_min_frame_count`` config (default 10, env ``OMNI_OCR_FREQUENCY_MIN_FRAME_COUNT``); ``filter_by_frequency`` skips filtering below the minimum so ≤9-frame clips (photo slideshows) no longer lose all text.
 
 ## [0.1.3] - 2026-07-12
@@ -120,5 +122,8 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.1.4]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.4
+[0.1.3]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.3
+[0.1.2]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.2
 [0.1.1]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.1
 [0.1.0]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.0
