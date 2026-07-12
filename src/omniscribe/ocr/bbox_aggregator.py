@@ -45,6 +45,8 @@ class _Survivor(NamedTuple):
     y_center: float
     x_center: float
     box_height: float
+    x_min: float
+    x_max: float
     text: str
     score: float
 
@@ -56,8 +58,9 @@ def aggregate_frame_bboxes(
     *,
     min_confidence: float,
     y_tolerance_ratio: float = 0.5,
+    x_gap_tolerance_ratio: float = 2.0,
 ) -> list[tuple[str, float]]:
-    """Group bboxes into reading-order lines.
+    """Group bboxes into reading-order lines, splitting on column gaps.
 
     Parameters
     ----------
@@ -78,13 +81,21 @@ def aggregate_frame_bboxes(
         for joining a bbox to the current line. Default ``0.5`` means a
         bbox joins if its ``y_center`` is within half the mean line height
         of the running line center.
+    x_gap_tolerance_ratio:
+        Multiplier on ``frame_mean_height`` used as the x-gap threshold
+        for splitting a same-y-line group into separate column chunks.
+        Word/phrase gaps are typically 0.2-0.6x text height; column gutters
+        are 3-5x. Default ``2.0`` keeps word gaps joined while splitting
+        column gutters. Strict ``>`` — a gap exactly at threshold stays
+        joined. Negative gaps (overlapping boxes) never split.
 
     Returns
     -------
     list[tuple[str, float]]
-        One ``(joined_text, mean_confidence)`` tuple per detected line, in
-        top-to-bottom order. Within each line, words are joined by single
-        space in left-to-right order. Empty input returns an empty list.
+        One ``(joined_text, mean_confidence)`` tuple per detected text chunk,
+        in top-to-bottom, left-to-right reading order. Within each line, words
+        with gap > ``x_gap_tolerance_ratio * mean_height`` produce separate
+        chunks. Empty input returns an empty list.
 
     Raises
     ------
@@ -108,6 +119,10 @@ def aggregate_frame_bboxes(
         if score < min_confidence:
             continue
         if text in seen_texts:
+            # NOTE: dedup runs before grouping, so a word appearing in BOTH
+            # columns survives only once and the later column's chunk will lack
+            # it — pre-existing behavior made visible by splitting;
+            # position-aware dedup is a tracked follow-up.
             continue
         seen_texts.add(text)
         # Step 3: derive axis-aligned bounding rectangle from the polygon.
@@ -120,6 +135,8 @@ def aggregate_frame_bboxes(
                 y_center=(y_min + y_max) / 2.0,
                 x_center=(x_min + x_max) / 2.0,
                 box_height=y_max - y_min,
+                x_min=x_min,
+                x_max=x_max,
                 text=text,
                 score=float(score),
             )
@@ -151,11 +168,23 @@ def aggregate_frame_bboxes(
             lines.append([entry])
             line_centers.append(entry.y_center)
 
-    # Steps 6+7: within each line sort by x_center, emit (text, mean_conf).
+    # Steps 6+7: within each line sort by x_center, then split on column gaps.
     out: list[tuple[str, float]] = []
     for line in lines:
         line.sort(key=lambda s: s.x_center)
-        joined_text = " ".join(s.text for s in line)
-        mean_conf = sum(s.score for s in line) / len(line)
-        out.append((joined_text, mean_conf))
+        # Split the line into chunks where adjacent x-gap exceeds threshold.
+        chunks: list[list[_Survivor]] = []
+        current = [line[0]]
+        for nxt in line[1:]:
+            gap = nxt.x_min - current[-1].x_max
+            if gap > x_gap_tolerance_ratio * mean_height:
+                chunks.append(current)
+                current = []
+            current.append(nxt)
+        chunks.append(current)
+        # Each chunk emits its own joined text and independent mean confidence.
+        for chunk in chunks:
+            joined_text = " ".join(s.text for s in chunk)
+            mean_conf = sum(s.score for s in chunk) / len(chunk)
+            out.append((joined_text, mean_conf))
     return out

@@ -142,3 +142,10 @@ markers = [
     "gpu: marks tests that require a GPU",
     "integration: requires a live local Ollama server; skipped in CI",
 ]
+
+[dependency-groups]
+dev = [
+    "anyio>=4",
+    "pytest>=9",
+    "pytest-asyncio>=1",
+]

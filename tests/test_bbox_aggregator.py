@@ -177,3 +177,111 @@ def test_mixed_confidence_within_line_keeps_only_high_bbox() -> None:
     text, conf = out[0]
     assert text == "hi"
     assert conf == pytest.approx(0.8)
+
+
+# ── Sprint 9.3: Column-aware line splitting ────────────────────────────────
+
+
+def test_column_gap_splits_line_into_two_segments() -> None:
+    """Same y-line, gap 100 px with mean height 30 (ratio 3.3) -> 2 segments."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # left column
+        _box(150.0, 0.0, 200.0, 30.0),  # right column, gap=100, ratio≈3.3
+    ]
+    out = aggregate_frame_bboxes(boxes, ["Eier", "Nudeln"], [0.9, 0.8], min_confidence=0.6)
+
+    assert len(out) == 2
+    assert out[0][0] == "Eier"
+    assert out[1][0] == "Nudeln"
+
+
+def test_small_gap_stays_joined() -> None:
+    """Same y-line, gap 10 px (0.33 x mean height) -> 1 joined segment."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # left
+        _box(60.0, 0.0, 110.0, 30.0),  # right, gap=10, ratio≈0.33
+    ]
+    out = aggregate_frame_bboxes(boxes, ["Hello", "World"], [0.9, 0.9], min_confidence=0.6)
+
+    assert len(out) == 1
+    assert out[0][0] == "Hello World"
+
+
+def test_boundary_gap_at_threshold_stays_joined() -> None:
+    """Gap exactly 2.0 x mean_height stays joined (strict >)."""
+    # gap = 110 - 50 = 60, mean_height = 30, ratio = 2.0
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),
+        _box(110.0, 0.0, 160.0, 30.0),
+    ]
+    out = aggregate_frame_bboxes(boxes, ["left", "right"], [0.9, 0.9], min_confidence=0.6)
+
+    assert len(out) == 1
+    assert out[0][0] == "left right"
+
+
+def test_negative_gap_overlap_never_splits() -> None:
+    """Overlapping x-ranges (negative gap) -> 1 segment."""
+    boxes = [
+        _box(0.0, 0.0, 100.0, 30.0),
+        _box(50.0, 0.0, 150.0, 30.0),  # overlap: gap=50-100=-50
+    ]
+    out = aggregate_frame_bboxes(boxes, ["overlap", "text"], [0.9, 0.9], min_confidence=0.6)
+
+    assert len(out) == 1
+    assert out[0][0] == "overlap text"
+
+
+def test_two_by_two_grid_emits_four_segments() -> None:
+    """2 rows x 2 columns with gutter gaps -> 4 segments in row-major order."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # row 1, col 1
+        _box(150.0, 0.0, 200.0, 30.0),  # row 1, col 2
+        _box(0.0, 100.0, 50.0, 130.0),  # row 2, col 1
+        _box(150.0, 100.0, 200.0, 130.0),  # row 2, col 2
+    ]
+    out = aggregate_frame_bboxes(
+        boxes,
+        ["r1c1", "r1c2", "r2c1", "r2c2"],
+        [0.9, 0.9, 0.9, 0.9],
+        min_confidence=0.6,
+    )
+
+    assert [t for t, _ in out] == ["r1c1", "r1c2", "r2c1", "r2c2"]
+
+
+def test_split_chunks_have_independent_mean_confidence() -> None:
+    """2-column line: each chunk's confidence is the mean of that column's boxes only."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # col 1, score 0.6
+        _box(60.0, 0.0, 110.0, 30.0),  # col 1, score 0.9
+        _box(200.0, 0.0, 250.0, 30.0),  # col 2, score 0.7
+        # gap between idx 1 and idx 2: 200-110=90, mean_height=30, ratio=3.0 > 2.0 -> split
+    ]
+    out = aggregate_frame_bboxes(boxes, ["A", "B", "C"], [0.6, 0.9, 0.7], min_confidence=0.6)
+
+    assert len(out) == 2
+    # col 1: "A B", mean (0.6+0.9)/2 = 0.75
+    assert out[0][0] == "A B"
+    assert out[0][1] == pytest.approx(0.75)
+    # col 2: "C", confidence 0.7
+    assert out[1][0] == "C"
+    assert out[1][1] == pytest.approx(0.7)
+
+
+def test_x_gap_tolerance_ratio_passthrough() -> None:
+    """x_gap_tolerance_ratio=10.0 keeps a 3.3x gap joined."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # left
+        _box(150.0, 0.0, 200.0, 30.0),  # right, gap=100, ratio≈3.3
+    ]
+    out = aggregate_frame_bboxes(
+        boxes,
+        ["left", "right"],
+        [0.9, 0.9],
+        min_confidence=0.6,
+        x_gap_tolerance_ratio=10.0,
+    )
+
+    assert len(out) == 1
+    assert out[0][0] == "left right"
