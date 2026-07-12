@@ -200,6 +200,27 @@ def test_transcribe_language_override_threads_into_config(tmp_path: Path, monkey
     assert config_arg.whisper_language == "fr"
 
 
+def test_transcribe_passes_detected_language_to_ocr_engine(tmp_path: Path, monkeypatch) -> None:
+    """ASR-detected language is forwarded to OCR engine's extract()."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    output = tmp_path / "out.json"
+
+    dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
+    with dl, ex, wh as mock_whisper_cls, oc as mock_ocr_cls, lc, ac:
+        mock_ocr_cls.return_value.extract.return_value = []
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "de")
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output)],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_ocr_cls.return_value.extract.assert_called_once()
+    _, kwargs = mock_ocr_cls.return_value.extract.call_args
+    assert kwargs.get("detected_language") == "de"
+
+
 def test_transcribe_ocr_flag_interleaves_segments(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
     monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")

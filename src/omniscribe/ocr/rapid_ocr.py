@@ -32,6 +32,97 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ISO 639-1 code → LangRec mapping for ASR-detected language → OCR rec model.
+# Values already valid as LangRec members pass through to the enum directly.
+# Unmapped codes fall back to LangRec.EN with a warning.
+_ISO_TO_LANGREC: dict[str, LangRec] = {
+    "en": LangRec.EN,
+    # Latin-script European languages → latin rec model
+    "de": LangRec.LATIN,
+    "fr": LangRec.LATIN,
+    "es": LangRec.LATIN,
+    "it": LangRec.LATIN,
+    "pt": LangRec.LATIN,
+    "nl": LangRec.LATIN,
+    "pl": LangRec.LATIN,
+    "sv": LangRec.LATIN,
+    "da": LangRec.LATIN,
+    "no": LangRec.LATIN,
+    "fi": LangRec.LATIN,
+    "tr": LangRec.LATIN,
+    "cs": LangRec.LATIN,
+    "sk": LangRec.LATIN,
+    "hu": LangRec.LATIN,
+    "ro": LangRec.LATIN,
+    "ca": LangRec.LATIN,
+    "vi": LangRec.LATIN,
+    "id": LangRec.LATIN,
+    "ms": LangRec.LATIN,
+    "sw": LangRec.LATIN,
+    "tl": LangRec.LATIN,
+    # Cyrillic script
+    "ru": LangRec.ESLAV,
+    "uk": LangRec.ESLAV,
+    "be": LangRec.ESLAV,
+    "bg": LangRec.CYRILLIC,
+    "sr": LangRec.CYRILLIC,
+    "mk": LangRec.CYRILLIC,
+    "mn": LangRec.CYRILLIC,
+    # CJK
+    "zh": LangRec.CH,
+    "ja": LangRec.JAPAN,
+    "ko": LangRec.KOREAN,
+    # Other scripts
+    "ar": LangRec.ARABIC,
+    "hi": LangRec.DEVANAGARI,
+    "th": LangRec.TH,
+    "el": LangRec.EL,
+    "ta": LangRec.TA,
+    "te": LangRec.TE,
+    "ka": LangRec.KA,
+}
+
+
+def _resolve_ocr_language(ocr_language: str, *, detected_language: str | None = None) -> LangRec:
+    """Resolve ``ocr_language`` config value to a :class:`LangRec` enum member.
+
+    Strategy:
+
+    1. If ``ocr_language`` is a valid ``LangRec`` value, use it directly.
+    2. If ``ocr_language`` is ``"auto"``, resolve via ``detected_language``
+       (falling back to ``"en"`` if ``detected_language`` is ``None``).
+    3. Otherwise, treat ``ocr_language`` as an ISO 639-1 code and look it
+       up in :data:`_ISO_TO_LANGREC`. Unmapped codes emit a warning and
+       fall back to ``LangRec.EN``.
+
+    Returns the resolved :class:`LangRec` member.
+    """
+    # Already a valid LangRec value? (e.g. "en", "latin", "ch")
+    try:
+        return LangRec(ocr_language)
+    except ValueError:
+        pass
+
+    # "auto" → resolve from detected language
+    if ocr_language == "auto":
+        resolved_iso = detected_language or "en"
+        lang = _ISO_TO_LANGREC.get(resolved_iso)
+        if lang is None:
+            logger.warning(
+                "No LangRec mapping for detected language %r; falling back to en",
+                resolved_iso,
+            )
+            return LangRec.EN
+        logger.info("OCR language auto-resolved: %r → %s", resolved_iso, lang.value)
+        return lang
+
+    # Treat as ISO 639-1 code
+    lang = _ISO_TO_LANGREC.get(ocr_language)
+    if lang is None:
+        logger.warning("Unmapped ISO code %r for OCR; falling back to en", ocr_language)
+        return LangRec.EN
+    return lang
+
 
 class RapidOCREngine:
     """Lazy-init RapidOCR wrapper that extracts on-screen text from a video.
@@ -65,16 +156,11 @@ class RapidOCREngine:
         self._engine: RapidOCR | None = None
         self.last_frame_count: int = 0
 
-    def _ensure_loaded(self) -> RapidOCR:
+    def _ensure_loaded(self, *, detected_language: str | None = None) -> RapidOCR:
         if self._engine is None:
-            try:
-                lang = LangRec(self._config.ocr_language)
-            except ValueError as exc:
-                supported = [m.value for m in LangRec]
-                raise OmniScribeError(
-                    f"Unsupported OCR language {self._config.ocr_language!r}. "
-                    f"Supported values: {supported}"
-                ) from exc
+            lang = _resolve_ocr_language(
+                self._config.ocr_language, detected_language=detected_language
+            )
 
             use_cuda = self._config.ocr_device == "cuda"
             logger.info(
@@ -99,7 +185,11 @@ class RapidOCREngine:
         return self._engine
 
     def extract(
-        self, video_path: Path, *, funnel: FunnelCounts | None = None
+        self,
+        video_path: Path,
+        *,
+        detected_language: str | None = None,
+        funnel: FunnelCounts | None = None,
     ) -> list[TranscriptSegment]:
         """Sample frames from ``video_path`` and return on-screen text segments.
 
@@ -116,18 +206,21 @@ class RapidOCREngine:
         When ``funnel`` is provided, stage-wise counts are recorded on the
         :class:`FunnelCounts` instance for pipeline diagnostics.
         """
-        engine = self._ensure_loaded()
+        engine = self._ensure_loaded(detected_language=detected_language)
         threshold = self._config.ocr_min_confidence
         language = self._config.ocr_language
 
         frame_count = 0
         segments: list[TranscriptSegment] = []
         profile = self._profile
-        apply_mask = (
-            self._config.ui_filter_enabled
-            and profile is not None
-            and bool(profile.ui_exclusion_zones)
-        )
+        # Combine UI exclusion zones and auto-caption band (if masking enabled).
+        if self._config.ui_filter_enabled and profile is not None:
+            mask_rects = list(profile.ui_exclusion_zones)
+            if self._config.ocr_mask_auto_captions:
+                mask_rects.extend(profile.auto_caption_zones)
+        else:
+            mask_rects = []
+        apply_mask = bool(mask_rects)
         for timestamp, frame in sample_frames(
             video_path,
             self._config.ocr_sample_fps,
@@ -136,8 +229,8 @@ class RapidOCREngine:
         ):
             frame_count += 1
             processed_frame = preprocess(frame)
-            if apply_mask and profile is not None:
-                processed_frame = mask_zones(processed_frame, profile.ui_exclusion_zones)
+            if apply_mask:
+                processed_frame = mask_zones(processed_frame, mask_rects)
             result = engine(processed_frame)
             # Guard explicitly for ``None`` rather than ``or ()``: ``boxes`` is
             # a numpy array on populated frames and ``or`` raises on numpy

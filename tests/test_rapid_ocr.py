@@ -274,19 +274,98 @@ def test_extract_logs_info_before_first_init(
 
 
 def test_extract_raises_on_unsupported_language(tmp_path: Path) -> None:
-    config = _make_config(ocr_language="xx")
+    """Unknown ocr_language values are rejected at config-construction time
+    by field_validator, not left to the OCR engine."""
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="ocr_language"):
+        _make_config(ocr_language="xx")
+
+
+# ── _resolve_ocr_language unit tests ────────────────────────────────
+
+
+class TestResolveOCRLanguage:
+    @staticmethod
+    @pytest.mark.parametrize(
+        "ocr_lang, detected, expected",
+        [
+            ("en", None, "en"),
+            ("latin", None, "latin"),
+            ("ch", None, "ch"),
+            ("auto", "de", "latin"),
+            ("auto", "fr", "latin"),
+            ("auto", "ru", "eslav"),
+            ("auto", "zh", "ch"),
+            ("auto", "ja", "japan"),
+            ("auto", "ar", "arabic"),
+            ("auto", None, "en"),
+            ("de", None, "latin"),
+            ("fr", None, "latin"),
+            ("ru", None, "eslav"),
+            ("zh", None, "ch"),
+        ],
+    )
+    def test_resolves_to_expected_langrec(
+        ocr_lang: str, detected: str | None, expected: str
+    ) -> None:
+        from omniscribe.ocr.rapid_ocr import _resolve_ocr_language
+
+        result = _resolve_ocr_language(ocr_lang, detected_language=detected)
+        assert result.value == expected
+
+    @staticmethod
+    def test_auto_with_unmapped_detected_falls_back_to_en(caplog) -> None:
+        """When detected language has no mapping, fall back to en with warning."""
+        from omniscribe.ocr.rapid_ocr import _resolve_ocr_language
+
+        result = _resolve_ocr_language("auto", detected_language="xx")
+        assert result.value == "en"
+        assert "No LangRec mapping" in caplog.text
+
+    @staticmethod
+    def test_unmapped_iso_falls_back_to_en_with_warning(caplog) -> None:
+        """Explicit unmapped ISO code falls back to en with warning.
+        (Config validator rejects unmapped values, but _resolve_ocr_language
+        handles them defensively.)"""
+        from omniscribe.ocr.rapid_ocr import _resolve_ocr_language
+
+        result = _resolve_ocr_language("xx")
+        assert result.value == "en"
+        assert "Unmapped ISO code" in caplog.text
+
+
+# ── auto-caption mask zone tests ────────────────────────────────────
+
+
+def test_extract_excludes_auto_caption_zones_when_masking_disabled(
+    tmp_path: Path,
+) -> None:
+    """When ocr_mask_auto_captions=False, mask_zones receives only
+    ui_exclusion_zones, not auto_caption_zones."""
+    from omniscribe.platforms.tiktok import TIKTOK_PROFILE
+
+    config = _make_config(ui_filter_enabled=True, ocr_mask_auto_captions=False)
     video = tmp_path / "v.mp4"
     video.write_bytes(b"fake")
 
-    with (
-        patch("omniscribe.ocr.rapid_ocr.RapidOCR") as mock_rapid_cls,
-        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
-        pytest.raises(OmniScribeError, match="Unsupported OCR language 'xx'"),
-    ):
-        RapidOCREngine(config).extract(video)
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
 
-    # Enum coercion fails *before* RapidOCR is constructed.
-    mock_rapid_cls.assert_not_called()
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch(
+            "omniscribe.ocr.rapid_ocr.sample_frames",
+            return_value=iter([(0.0, _fake_frame())]),
+        ),
+        patch("omniscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
+    ):
+        mock_mask.side_effect = lambda gray, zones: gray
+        RapidOCREngine(config, profile=TIKTOK_PROFILE).extract(video)
+
+    mock_mask.assert_called_once()
+    _, zones = mock_mask.call_args[0]
+    assert tuple(zones) == TIKTOK_PROFILE.ui_exclusion_zones
 
 
 def test_extract_wraps_engine_init_failure_as_omniscribe_error(tmp_path: Path) -> None:
@@ -333,9 +412,10 @@ def test_extract_calls_mask_zones_when_profile_and_ui_filter_enabled(tmp_path: P
         RapidOCREngine(config, profile=TIKTOK_PROFILE).extract(video)
 
     assert mock_mask.call_count == 2
+    expected_zones = TIKTOK_PROFILE.ui_exclusion_zones + TIKTOK_PROFILE.auto_caption_zones
     for call in mock_mask.call_args_list:
         _, zones = call.args
-        assert zones == TIKTOK_PROFILE.ui_exclusion_zones
+        assert tuple(zones) == expected_zones
 
 
 def test_extract_does_not_call_mask_zones_when_ui_filter_disabled(tmp_path: Path) -> None:

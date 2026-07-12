@@ -173,6 +173,82 @@ def test_merge_similarity_threshold_boundaries_accepted(
     assert cfg.merge_similarity_threshold == ok
 
 
+# ── ocr_language validator ──────────────────────────────────────────
+
+
+def test_ocr_language_default_is_en(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default ocr_language is 'en' (no baseline move)."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.ocr_language == "en"
+
+
+def test_ocr_language_accepts_auto(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ocr_language='auto' is accepted (resolved at runtime via ASR detections)."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig(ocr_language="auto")
+
+    assert cfg.ocr_language == "auto"
+
+
+@pytest.mark.parametrize("lang", ["en", "latin", "ch", "arabic", "eslav", "devanagari"])
+def test_ocr_language_accepts_valid_langrec_values(
+    monkeypatch: pytest.MonkeyPatch, lang: str
+) -> None:
+    """All valid LangRec enum values are accepted."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig(ocr_language=lang)
+
+    assert cfg.ocr_language == lang
+
+
+@pytest.mark.parametrize("iso", ["de", "fr", "ru", "zh", "ja", "ar"])
+def test_ocr_language_accepts_mapped_iso_codes(monkeypatch: pytest.MonkeyPatch, iso: str) -> None:
+    """Mapped ISO 639-1 codes are accepted."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig(ocr_language=iso)
+
+    assert cfg.ocr_language == iso
+
+
+@pytest.mark.parametrize("bad", ["xx", "garbage", "zz"])
+def test_ocr_language_rejects_unmapped_values(monkeypatch: pytest.MonkeyPatch, bad: str) -> None:
+    """Unmapped / unknown values are rejected at config construction."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError, match="ocr_language"):
+        OmniScribeConfig(ocr_language=bad)
+
+
+# ── ocr_mask_auto_captions ──────────────────────────────────────────
+
+
+def test_ocr_mask_auto_captions_default_is_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default preserves current behavior (auto-caption band masked)."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.ocr_mask_auto_captions is True
+
+
+def test_ocr_mask_auto_captions_env_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMNI_OCR_MASK_AUTO_CAPTIONS=false disables caption masking."""
+    _strip_omni_env(monkeypatch)
+    monkeypatch.setenv("OMNI_OCR_MASK_AUTO_CAPTIONS", "false")
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.ocr_mask_auto_captions is False
+
+
 # ── output_format ──────────────────────────────────────────────────────────
 
 
