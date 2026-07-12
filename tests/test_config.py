@@ -353,6 +353,32 @@ def test_llm_asr_cleanup_enabled_env_true_parses(monkeypatch: pytest.MonkeyPatch
     assert cfg.llm_asr_cleanup_enabled is True
 
 
+# ── ocr_frequency_min_frame_count (Sprint 9.2) ─────────────────────────
+
+
+def test_ocr_frequency_min_frame_count_default_is_ten(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sprint 9.2 — default min_frame_count is 10 (photo-slideshow guard)."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.ocr_frequency_min_frame_count == 10
+
+
+def test_ocr_frequency_min_frame_count_rejects_negative(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Negative min_frame_count raises ValidationError (pydantic ge=0)."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        OmniScribeConfig(ocr_frequency_min_frame_count=-1)
+
+
 @pytest.mark.parametrize("truthy", ["true", "True", "TRUE", "1"])
 def test_llm_asr_cleanup_enabled_env_case_insensitive(
     monkeypatch: pytest.MonkeyPatch, truthy: str

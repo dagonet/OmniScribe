@@ -51,6 +51,11 @@ class OmniScribeConfig(BaseSettings):
     ocr_device: str = "cuda"
     scene_change_enabled: bool = True
     scene_change_threshold: float = 0.02
+    # Sprint 9.2: guard only activates below 10 sampled frames (~10 s at 1 fps);
+    # at N=10 a 9/10 text (0.9 < 0.95) already survives the default threshold,
+    # so the guard protects exactly the pathological ≤9-frame zone (2-frame
+    # photo slideshows) without touching typical 30+ frame videos.
+    ocr_frequency_min_frame_count: int = Field(default=10, ge=0)
 
     # ── LLM cleanup ──────────────────────────────────────
     # Opt-in per-segment OCR-artefact cleanup via a local Ollama model.

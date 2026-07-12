@@ -197,5 +197,47 @@ def test_mask_zones_tiktok_profile_zeros_caption_band() -> None:
     assert masked[sample_y, sample_x] == 0
 
 
+# ── Sprint 9.2: min_frame_count guard ──────────────────────────────────
+
+
+def test_filter_by_frequency_min_frame_count_guard_passes_through() -> None:
+    """frame_count < min_frame_count returns input unchanged (all segments kept)."""
+    segs = [_ocr("WATERMARK"), _ocr("WATERMARK")]
+    result = filter_by_frequency(
+        segs,
+        frame_count=2,
+        threshold=0.95,
+        min_frame_count=10,
+    )
+    # frame_count=2 < min_frame_count=10 → guard activates → input unchanged
+    assert len(result) == 2
+
+
+def test_filter_by_frequency_min_frame_count_zero_disables_guard() -> None:
+    """min_frame_count=0 keeps old drop behavior on a would-drop input."""
+    segs = [_ocr("WATERMARK"), _ocr("WATERMARK")]
+    result = filter_by_frequency(
+        segs,
+        frame_count=2,
+        threshold=0.95,
+        min_frame_count=0,
+    )
+    # guard disabled (0 == disabled), filter runs: 2/2 >= 0.95 → dropped
+    assert result == []
+
+
+def test_filter_by_frequency_at_exact_min_frame_count_filters() -> None:
+    """frame_count == min_frame_count: guard is strict '<' so filter runs."""
+    segs = [_ocr("SUBSCRIBE")] * 10
+    result = filter_by_frequency(
+        segs,
+        frame_count=10,
+        threshold=0.95,
+        min_frame_count=10,
+    )
+    # 10 < 10 is False → guard does NOT activate; 10/10 >= 0.95 → dropped
+    assert result == []
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

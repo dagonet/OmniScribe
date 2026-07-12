@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Multi-line eval matching**: GT texts spanning multiple visual lines now match when OCR emits per-line segments; scoring tries pairwise concatenation (both orders) of segments within a 2.0 s start-span window; precision counts pair participants via union with the existing per-segment semantics.
+- **Frequency-filter min-frame guard**: new ``ocr_frequency_min_frame_count`` config (default 10, env ``OMNI_OCR_FREQUENCY_MIN_FRAME_COUNT``); ``filter_by_frequency`` skips filtering below the minimum so ≤9-frame clips (photo slideshows) no longer lose all text.
+
 ## [0.1.3] - 2026-07-12
 
 ### Changed
