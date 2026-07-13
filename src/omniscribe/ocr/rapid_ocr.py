@@ -289,7 +289,7 @@ class RapidOCREngine:
         """Sample frames from ``video_path`` and return on-screen text segments.
 
         Each yielded RapidOCR result contributes zero or more
-        :class:`TranscriptSegment` instances -- one per **aggregated text line**
+        :class:`TranscriptSegment` instances — one per **aggregated text line**
         per frame, where same-y-line bounding boxes are joined left-to-right
         into one canonical caption string by
         :func:`omniscribe.ocr.bbox_aggregator.aggregate_frame_bboxes`. The

@@ -61,19 +61,26 @@ def _run_gallery_dl(dest: Path, source: str) -> None:
     Tries ``python -m gallery_dl`` first, then falls back to ``gallery-dl``
     script. Raises :class:`OmniScribeError` with an install hint if both fail.
     """
-    tried_module = False
+    # Try module invocation first.
     try:
         result = subprocess.run(
             [sys.executable, "-m", "gallery_dl", "-D", str(dest), source],
             capture_output=True,
             timeout=300,
         )
-        tried_module = True
         if result.returncode == 0:
             return
+        # Check module-specific failure immediately (result still bound).
+        stderr = result.stderr.decode(errors="replace") if result.stderr else ""
+        if "No module named" in stderr or "ModuleNotFoundError" in stderr:
+            raise OmniScribeError(
+                "photo posts need the optional extra - "
+                "`uv sync --extra photo` (or `pip install omniscribe[photo]`)"
+            )
     except FileNotFoundError:
         pass
 
+    # Fall back to script name.
     gallery_dl_path = shutil.which("gallery-dl")
     if gallery_dl_path is not None:
         try:
@@ -91,10 +98,6 @@ def _run_gallery_dl(dest: Path, source: str) -> None:
         "photo posts need the optional extra - "
         "`uv sync --extra photo` (or `pip install omniscribe[photo]`)"
     )
-    if tried_module and result.returncode != 0:
-        stderr = result.stderr.decode(errors="replace") if result.stderr else ""
-        if "No module named" in stderr or "ModuleNotFoundError" in stderr:
-            raise OmniScribeError(hint)
     raise OmniScribeError(f"gallery-dl failed - {hint}")
 
 

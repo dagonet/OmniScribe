@@ -343,8 +343,6 @@ def process_single_video(
                     len(ocr_segments),
                     ocr_engine.last_frame_count,
                 )
-            else:
-                segments = speech_segments
         else:
             # ---- Existing video path (byte-identical) ----
             video_path = download_video(source, temp_dir)
@@ -363,8 +361,6 @@ def process_single_video(
                     len(ocr_segments),
                     ocr_engine.last_frame_count,
                 )
-            else:
-                segments = speech_segments
 
         # ---- Shared filter/dedup/merge pipeline (photo + video) ----
         if ocr_active:
