@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **RapidOCR det knobs** (#41): three optional env overrides — `OMNI_OCR_DET_LIMIT_SIDE_LEN`, `OMNI_OCR_DET_THRESH`, `OMNI_OCR_DET_BOX_THRESH` — expose RapidOCR's `Det.*` params for the #41 grid search on dense-small-text content. Defaults are None (zero behavior change) until data-driven values are chosen.
+- **RapidOCR model-variant knobs** (#41 phase 2): four optional env overrides — `OMNI_OCR_DET_MODEL_TYPE`, `OMNI_OCR_DET_OCR_VERSION`, `OMNI_OCR_REC_MODEL_TYPE`, `OMNI_OCR_REC_OCR_VERSION` — expose RapidOCR's higher-capacity model variants (server / PP-OCRv5) for the #41 GPU capability probe. Defaults are None (rapidocr default: mobile / PP-OCRv4). **CH-det-lang auto-override**: when det model type is `server` or det OCR version is `PP-OCRv5`, the det language parameter is forced to `CH` because rapidocr's model registry ships det models only as `ch_*` for those variants. Part of #41.
 
 ## [0.1.5] - 2026-07-13
 

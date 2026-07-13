@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from rapidocr import LangRec, RapidOCR
+from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
 
 from omniscribe.errors import OmniScribeError
 from omniscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
@@ -186,6 +186,32 @@ class RapidOCREngine:
                 params["Det.thresh"] = self._config.ocr_det_thresh
             if self._config.ocr_det_box_thresh is not None:
                 params["Det.box_thresh"] = self._config.ocr_det_box_thresh
+            # Sprint 9.5 — model-variant knobs (None = rapidocr default).
+            # CH-det-lang override: rapidocr's default_models.yaml ships det
+            # models only as ch_* for server and v5 variants; if det_lang stays
+            # EN while server/v5 det is selected, model-URL lookup raises
+            # ValueError("Invalid OCR configuration.").  Force det_lang to CH
+            # to pick up the shipping det model.
+            if (
+                self._config.ocr_det_model_type == "server"
+                or self._config.ocr_det_ocr_version == "PP-OCRv5"
+            ):
+                det_lang = LangRec.CH
+                logger.info(
+                    "Server/v5 det selected: forcing Det.lang_type to CH "
+                    "(rapidocr model registry limitation — only ch_* det models ship for these variants)"
+                )
+            params["Det.lang_type"] = det_lang  # re-apply in case CH override fired
+            if self._config.ocr_det_model_type is not None:
+                params["Det.model_type"] = ModelType(self._config.ocr_det_model_type)
+            if self._config.ocr_det_ocr_version is not None:
+                params["Det.ocr_version"] = OCRVersion(self._config.ocr_det_ocr_version)
+            if self._config.ocr_rec_model_type is not None:
+                params["Rec.model_type"] = ModelType(self._config.ocr_rec_model_type)
+            if self._config.ocr_rec_ocr_version is not None:
+                params["Rec.ocr_version"] = OCRVersion(self._config.ocr_rec_ocr_version)
+            # Cls (orientation classifier) deliberately stays at defaults —
+            # recall-irrelevant.
             try:
                 self._engine = RapidOCR(params=params)
             except Exception as exc:

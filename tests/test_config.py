@@ -439,3 +439,70 @@ def test_det_knobs_env_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
     assert cfg.ocr_det_limit_side_len == 1440
     assert cfg.ocr_det_thresh == 0.25
     assert cfg.ocr_det_box_thresh is None
+
+
+# ── Sprint 9.5: model-variant knobs ──────────────────────────────────────────
+
+
+def test_model_knobs_default_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """All four model-variant knobs default to None (zero behavior change)."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.ocr_det_model_type is None
+    assert cfg.ocr_det_ocr_version is None
+    assert cfg.ocr_rec_model_type is None
+    assert cfg.ocr_rec_ocr_version is None
+
+
+@pytest.mark.parametrize(
+    "bad_kwargs",
+    [
+        {"ocr_det_model_type": "huge"},
+        {"ocr_det_ocr_version": "PP-OCRv3"},
+        {"ocr_rec_model_type": "nano"},
+        {"ocr_rec_ocr_version": "PP-OCRv2"},
+    ],
+)
+def test_model_knobs_reject_unknown_values(
+    monkeypatch: pytest.MonkeyPatch, bad_kwargs: dict[str, object]
+) -> None:
+    """Unknown model_type / ocr_version values raise ValidationError."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError, match=r"model_type|ocr_version"):
+        OmniScribeConfig(**bad_kwargs)
+
+
+def test_model_knobs_normalize_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Case-insensitive input normalised to canonical form."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig(
+        ocr_det_model_type="SERVER",
+        ocr_det_ocr_version="pp-ocrv5",
+        ocr_rec_model_type="Mobile",
+        ocr_rec_ocr_version="PP-OCRv4",
+    )
+
+    assert cfg.ocr_det_model_type == "server"
+    assert cfg.ocr_det_ocr_version == "PP-OCRv5"
+    assert cfg.ocr_rec_model_type == "mobile"
+    assert cfg.ocr_rec_ocr_version == "PP-OCRv4"
+
+
+def test_model_knobs_env_round_trip_and_empty_string(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Env-set values parse; empty string coerces to None."""
+    _strip_omni_env(monkeypatch)
+    monkeypatch.setenv("OMNI_OCR_DET_MODEL_TYPE", "server")
+    monkeypatch.setenv("OMNI_OCR_REC_OCR_VERSION", "")
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.ocr_det_model_type == "server"
+    assert cfg.ocr_rec_ocr_version is None
