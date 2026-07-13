@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **HTTP API mode** (v0.2.0 / Sprint 9.10) — new `omniscribe serve` command starts a FastAPI server with `POST /jobs`, `GET /jobs`, `GET /jobs/{id}`, and `GET /healthz` endpoints. Requires the `[api]` extra: `uv sync --extra api`. Single-worker executor with per-job temp directories. v1 limitations documented in README (no auth, no persistence, shutdown-hang). PR #??.
+
 ## [0.1.9] - 2026-07-13
 
 ### Added

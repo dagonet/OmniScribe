@@ -684,3 +684,29 @@ def transcribe_many(
     # Exit code: 1 if work was attempted but nothing succeeded; 0 otherwise.
     if any_attempt and not any_success:
         raise typer.Exit(code=1)
+
+
+@app.command()
+def serve(
+    host: str = typer.Option(
+        "127.0.0.1",
+        "--host",
+        help="Bind address (no auth; do not expose publicly).",
+    ),
+    port: int = typer.Option(
+        8000,
+        "--port",
+        help="TCP port.",
+    ),
+) -> None:
+    """Start the HTTP API server.
+
+    Requires: uv sync --extra api
+    """
+    try:
+        import uvicorn
+
+        from omniscribe.api.server import create_app
+    except ImportError:
+        raise OmniScribeError("API mode requires the [api] extra: uv sync --extra api") from None
+    uvicorn.run(create_app(), host=host, port=port)

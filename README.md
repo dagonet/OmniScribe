@@ -139,6 +139,68 @@ still works on on-screen text, which stays in the source language. Cross-languag
 ``[BOTH]`` merges do not fire under translation (WRatio < 0.85 between English
 speech and source-language OCR), so segments remain ``[SPEECH]`` + ``[ON-SCREEN]``.
 
+## API Mode (HTTP Server)
+
+OmniScribe provides an HTTP API for submitting transcription jobs and polling
+for results. The server is single-worker (one job at a time) and uses the same
+pipeline as the CLI.
+
+```bash
+# Install with the API extra
+uv sync --extra api
+
+# Start the server (default: http://127.0.0.1:8000)
+omniscribe serve
+
+# Custom host/port
+omniscribe serve --host 127.0.0.1 --port 9000
+```
+
+### Endpoints
+
+```bash
+# Health check
+curl http://127.0.0.1:8000/healthz
+# {"status":"ok","version":"0.2.0"}
+
+# Submit a job
+curl -X POST http://127.0.0.1:8000/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"source": "https://www.youtube.com/watch?v=abc123"}'
+# {"job_id":"a1b2c3d4e5f6..."}
+
+# With overrides (same flags as the CLI)
+curl -X POST http://127.0.0.1:8000/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"source": "video.mp4", "language": "de", "translate": true, "ocr": false}'
+
+# Poll for results
+curl http://127.0.0.1:8000/jobs/a1b2c3d4e5f6...
+# {"id":"a1b2c3...","source":"...","status":"done","result":{...}}
+
+# List all jobs (summary only)
+curl http://127.0.0.1:8000/jobs
+# [{"id":"a1b2c3...","source":"...","status":"done","created_at":"..."}]
+```
+
+### Security
+
+The API has **no authentication** and triggers downloads of arbitrary URLs. It
+binds to `127.0.0.1` by default. **Do not expose it publicly** — bind to
+localhost or use a reverse proxy with authentication.
+
+### v1 Limitations
+
+- **No persistence**: restarting the server loses all in-progress and completed
+  jobs. Results should be saved externally by the caller.
+- **Shutdown hang**: Ctrl+C blocks until the current job finishes (non-daemon
+  threads). In-flight jobs are lost — there is no graceful handoff.
+- **No cancellation**: once submitted, a job runs to completion or failure.
+- **Single worker**: one GPU means one job at a time.
+- **JSON output only**: the API always returns JSON results regardless of the
+  CLI's ``--format`` flag.
+- **Poll-based**: no SSE, no webhooks — poll ``GET /jobs/{id}``.
+
 ## Known Limitations
 
 OmniScribe is in active development (alpha). The pipeline produces a usable
