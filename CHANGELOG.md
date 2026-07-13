@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-07-13
+
 ### Fixed
 
 - **Docker image now bundles the `[photo]` extra** (gallery-dl): TikTok `/photo/` post URLs previously failed in-container because gallery-dl was not installed. Both `uv sync` layers in the Dockerfile now pass `--extra photo`. README Docker section documents the bundled extras (and that `[llm]` intentionally stays out — Ollama is host-external).
@@ -154,6 +156,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.1.8]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.8
 [0.1.7]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.7
 [0.1.6]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.6
 [0.1.5]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.5
