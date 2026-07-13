@@ -51,6 +51,26 @@ class _Survivor(NamedTuple):
     score: float
 
 
+def _overlaps(
+    survivor: _Survivor,
+    x_min: float,
+    x_max: float,
+    y_min: float,
+    y_max: float,
+) -> bool:
+    """True if survivor's bbox spatially overlaps the incoming box on BOTH axes.
+
+    Strict ``<`` comparison — touching boxes with zero intersection area are
+    NOT considered duplicates (correct for RapidOCR double-detections that
+    produce near-identical boxes).
+    """
+    top = survivor.y_center - survivor.box_height / 2.0
+    bottom = survivor.y_center + survivor.box_height / 2.0
+    x_overlap = survivor.x_min < x_max and x_min < survivor.x_max
+    y_overlap = top < y_max and y_min < bottom
+    return x_overlap and y_overlap
+
+
 def aggregate_frame_bboxes(
     boxes: Sequence[Sequence[tuple[float, float]]],
     texts: Sequence[str],
@@ -112,35 +132,43 @@ def aggregate_frame_bboxes(
     if len(boxes) == 0:
         return []
 
-    # Steps 1+2+3: confidence filter, intra-frame dedup, axis-aligned geometry.
+    # Steps 1+2+3: confidence filter, intra-frame spatial dedup, axis-aligned geometry.
     survivors: list[_Survivor] = []
-    seen_texts: set[str] = set()
+    seen: dict[str, list[_Survivor]] = {}
     for box, text, score in zip(boxes, texts, scores, strict=True):
         if score < min_confidence:
             continue
-        if text in seen_texts:
-            # NOTE: dedup runs before grouping, so a word appearing in BOTH
-            # columns survives only once and the later column's chunk will lack
-            # it — pre-existing behavior made visible by splitting;
-            # position-aware dedup is a tracked follow-up.
-            continue
-        seen_texts.add(text)
-        # Step 3: derive axis-aligned bounding rectangle from the polygon.
+        # Step 3: derive axis-aligned bounding rectangle from the polygon
+        # (computed before dedup because spatial overlap needs geometry).
         ys = [pt[1] for pt in box]
         xs = [pt[0] for pt in box]
         y_min, y_max = min(ys), max(ys)
         x_min, x_max = min(xs), max(xs)
-        survivors.append(
-            _Survivor(
-                y_center=(y_min + y_max) / 2.0,
-                x_center=(x_min + x_max) / 2.0,
-                box_height=y_max - y_min,
-                x_min=x_min,
-                x_max=x_max,
-                text=text,
-                score=float(score),
-            )
+
+        # Step 2: spatial dedup — skip if any accepted same-text box overlaps
+        # this one on both axes. Same text in another column or row is kept
+        # (non-overlapping same-text repetitions are legitimate); overlapping
+        # double-detections (RapidOCR's most common dup pattern) are dropped.
+        if text in seen:
+            is_dup = False
+            for survivor in seen[text]:
+                if _overlaps(survivor, x_min, x_max, y_min, y_max):
+                    is_dup = True
+                    break
+            if is_dup:
+                continue
+
+        survivor = _Survivor(
+            y_center=(y_min + y_max) / 2.0,
+            x_center=(x_min + x_max) / 2.0,
+            box_height=y_max - y_min,
+            x_min=x_min,
+            x_max=x_max,
+            text=text,
+            score=float(score),
         )
+        survivors.append(survivor)
+        seen.setdefault(text, []).append(survivor)
 
     if not survivors:
         return []
