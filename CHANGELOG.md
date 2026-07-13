@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- **Position-aware intra-frame dedup** (#40): `aggregate_frame_bboxes` now checks spatial overlap (axis-aligned intersection on both axes) instead of frame-wide text-only matching when deduplicating same-text detections. Same text in different columns or rows is no longer silently dropped; overlapping double-detections (RapidOCR's most common duplicate pattern) are still deduped correctly. Closes #40.
+## [0.1.7] - 2026-07-13
 
 ### Added
 
-- **Photo-mode-native pipeline** (#46): native processing of TikTok `/photo/` posts — slides + audio are downloaded via gallery-dl (new `[photo]` extra), OCR'd at native resolution (extract_images), and spread across audio duration for timestamped output. `omniscribe transcribe <TikTok-photo-URL>` and `omniscribe transcribe <local-dir>` both work. `scripts/eval_ocr.py --images DIR` for evaluation. Closes #46.
+- **Photo-mode-native pipeline** (#46): native processing of TikTok `/photo/` posts — slides + audio are downloaded via gallery-dl (new `[photo]` extra), OCR'd at native resolution (extract_images), and spread across audio duration for timestamped output. `omniscribe transcribe <TikTok-photo-URL>` and `omniscribe transcribe <local-dir>` both work. `scripts/eval_ocr.py --images DIR` for evaluation. GPU-verified: sample-1 native recall **1.0** vs 0.25 stitched (raw det boxes 320 vs 136). Closes #46.
+
+### Fixed
+
+- **Position-aware intra-frame dedup** (#40): `aggregate_frame_bboxes` now checks spatial overlap (axis-aligned intersection on both axes) instead of frame-wide text-only matching when deduplicating same-text detections. Same text in different columns or rows is no longer silently dropped; overlapping double-detections (RapidOCR's most common duplicate pattern) are still deduped correctly. Closes #40.
 
 ## [0.1.6] - 2026-07-13
 
@@ -148,6 +150,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.1.7]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.7
 [0.1.6]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.6
 [0.1.5]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.5
 [0.1.4]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.4
