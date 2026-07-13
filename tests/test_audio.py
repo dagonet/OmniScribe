@@ -66,3 +66,34 @@ def test_extract_audio_wraps_called_process_error(tmp_path: Path) -> None:
         pytest.raises(OmniScribeError, match="Invalid data found"),
     ):
         extract_audio(tmp_path / "a.mp4", tmp_path / "b.wav")
+
+
+# -- get_duration -------------------------------------------------------------
+
+
+def test_get_duration_parses_ffprobe(tmp_path: Path) -> None:
+    audio = tmp_path / "track.mp3"
+    audio.write_bytes(b"fake")
+    mock_stdout = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"13.35\n", stderr=b"")
+
+    with patch("omniscribe.audio.subprocess.run", return_value=mock_stdout):
+        from omniscribe.audio import get_duration
+
+        result = get_duration(audio)
+
+    assert result == pytest.approx(13.35)
+
+
+def test_get_duration_failure_returns_none(tmp_path: Path) -> None:
+    audio = tmp_path / "track.mp3"
+    audio.write_bytes(b"fake")
+
+    with (
+        patch("omniscribe.audio.subprocess.run", side_effect=FileNotFoundError),
+        patch("omniscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
+    ):
+        from omniscribe.audio import get_duration
+
+        result = get_duration(audio)
+
+    assert result is None

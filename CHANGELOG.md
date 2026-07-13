@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Photo-mode-native pipeline** (#46): native processing of TikTok `/photo/` posts — slides + audio are downloaded via gallery-dl (new `[photo]` extra), OCR'd at native resolution (extract_images), and spread across audio duration for timestamped output. `omniscribe transcribe <TikTok-photo-URL>` and `omniscribe transcribe <local-dir>` both work. `scripts/eval_ocr.py --images DIR` for evaluation. Closes #46.
+
 ## [0.1.6] - 2026-07-13
 
 ### Added

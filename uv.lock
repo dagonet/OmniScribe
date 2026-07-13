@@ -247,6 +247,18 @@ wheels = [
 ]
 
 [[package]]
+name = "gallery-dl"
+version = "1.32.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3c/86/4f24dafc8b98c808e5d92feca49ebd8dc27428c429016883a9eb91fba791/gallery_dl-1.32.6.tar.gz", hash = "sha256:33847e9e77082aa97a8cfcfc737f3eb338922adc6c89630a8aed30444f2287e5", size = 725422, upload-time = "2026-07-11T09:51:37.383Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ed/05/35c76a367757a11310147ebce33eb030ef6b3d07f6ea5e8e96d085706a7e/gallery_dl-1.32.6-py3-none-any.whl", hash = "sha256:3c93c31ed393e962b34ed95fc23368234ee3cc79cb94529542ae8fc5ae8c876e", size = 900546, upload-time = "2026-07-11T09:51:33.757Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -590,10 +602,14 @@ dev = [
 llm = [
     { name = "ollama" },
 ]
+photo = [
+    { name = "gallery-dl" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "faster-whisper", specifier = ">=1.1.0" },
+    { name = "gallery-dl", marker = "extra == 'photo'", specifier = ">=1.30" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.13" },
     { name = "numpy", specifier = ">=1.26,<3.0" },
     { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'", specifier = ">=12,<13" },
@@ -613,7 +629,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.13" },
     { name = "yt-dlp", specifier = ">=2024.0" },
 ]
-provides-extras = ["llm", "dev"]
+provides-extras = ["photo", "llm", "dev"]
 
 [[package]]
 name = "onnxruntime"
