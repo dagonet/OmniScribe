@@ -501,6 +501,62 @@ def test_extract_records_last_frame_count(tmp_path: Path) -> None:
     assert ocr.last_frame_count == 3
 
 
+def test_params_wiring_with_det_overrides(tmp_path: Path) -> None:
+    """Sprint 9.4 — config with all three det knobs set passes them as Det.* params.
+
+    NOTE: this asserts OUR params dict construction only. rapidocr silently
+    ignores unknown keys via OmegaConf, so key-string correctness is verified by
+    the #41 grid's Run-1 halt-gate, not by this unit test.
+    """
+    config = _make_config(
+        ocr_det_limit_side_len=1440,
+        ocr_det_thresh=0.2,
+        ocr_det_box_thresh=0.3,
+    )
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    _, kwargs = mock_rapid_cls.call_args
+    params = kwargs["params"]
+    assert params["Det.limit_side_len"] == 1440
+    assert params["Det.thresh"] == 0.2
+    assert params["Det.box_thresh"] == 0.3
+
+
+def test_params_wiring_with_det_defaults_not_present(tmp_path: Path) -> None:
+    """Sprint 9.4 — None defaults add zero Det.* keys (existing behavior unchanged)."""
+    config = _make_config(
+        ocr_device="cuda",
+        ocr_language="en",
+    )
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    _, kwargs = mock_rapid_cls.call_args
+    params = kwargs["params"]
+    assert "Det.limit_side_len" not in params
+    assert "Det.thresh" not in params
+    assert "Det.box_thresh" not in params
+
+
 def test_extract_aggregates_same_line_bboxes_into_one_segment(tmp_path: Path) -> None:
     """Sprint OCR-Recall — wiring guard for the bbox aggregator.
 

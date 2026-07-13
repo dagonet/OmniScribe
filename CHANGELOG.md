@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **RapidOCR det knobs** (#41): three optional env overrides — `OMNI_OCR_DET_LIMIT_SIDE_LEN`, `OMNI_OCR_DET_THRESH`, `OMNI_OCR_DET_BOX_THRESH` — expose RapidOCR's `Det.*` params for the #41 grid search on dense-small-text content. Defaults are None (zero behavior change) until data-driven values are chosen.
+
 ## [0.1.5] - 2026-07-13
 
 ### Fixed
