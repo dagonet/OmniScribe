@@ -68,6 +68,9 @@ omniscribe transcribe-many urls.txt --output-dir transcripts/ --format md
 # Batch a whole YouTube channel or playlist (auto-expanded inline)
 echo "https://www.youtube.com/@channel/videos" > urls.txt
 omniscribe transcribe-many urls.txt --output-dir transcripts/ --format md
+
+# Speech translation: transcribe German speech as English text
+omniscribe transcribe ./video.mp4 --translate --output transcript.json
 ```
 
 Playlist + channel URLs in the URL list are automatically expanded via yt-dlp;
@@ -98,6 +101,7 @@ Videos from any other platform work too — just without UI-specific filtering.
 - **GPU-accelerated** — Optimized for NVIDIA GPUs (CUDA), works on CPU too
 - **Multiple output formats** — JSON, TXT, SRT, Markdown
 - **Multilingual** — Supports 80+ languages for both speech and text recognition
+- **Speech translation** — Translate speech from any supported language directly into English with `--translate` (uses Whisper's native `task=translate`). On-screen text stays in the source language.
 - **LLM OCR cleanup (optional)** — Fix OCR artefacts on screen-text segments via a local Ollama model. Opt-in with `--llm-cleanup`. Requires `uv sync --extra llm` and a running Ollama with the configured model pulled (default `llama3.2:3b`).
 - **LLM ASR punctuation cleanup (optional)** — Improve punctuation and capitalization on speech segments via a local Ollama model. Opt-in with `--asr-cleanup`. Reuses the same `[llm]` extras and Ollama host as OCR cleanup.
 
@@ -124,6 +128,16 @@ window (slide 0: 0-1s, slide 1: 1-2s, ...). The OCR runs at native resolution on
 each slide, unlike stitched-video processing where resolution is constrained by
 the video codec (see #46 and #41 for benchmarks — native slides yield ~56
 detection boxes vs ~17 on stitched frames).
+
+## Translation
+
+When using ``--translate`` (or ``OMNI_WHISPER_TASK=translate``), Whisper transcribes
+source-language speech directly into English. Segment-level ``language`` fields
+report ``en`` (the text language), while the top-level transcript ``language`` field
+retains the detected source language — this ensures OCR language auto-resolution
+still works on on-screen text, which stays in the source language. Cross-language
+``[BOTH]`` merges do not fire under translation (WRatio < 0.85 between English
+speech and source-language OCR), so segments remain ``[SPEECH]`` + ``[ON-SCREEN]``.
 
 ## Known Limitations
 

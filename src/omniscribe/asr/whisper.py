@@ -151,7 +151,14 @@ class WhisperTranscriber:
         return self._pipeline
 
     def transcribe(self, audio_path: Path) -> tuple[list[TranscriptSegment], str]:
-        """Run ASR on ``audio_path``; return (segments, detected_language)."""
+        """Run ASR on ``audio_path``; return (segments, detected_language).
+
+        When ``whisper_task`` is ``"translate"``, Whisper transcribes source-language
+        speech directly into English. Segment-level ``language`` fields report ``"en"``
+        (the text language) while the returned ``detected_language`` stays the source
+        language — this drives OCR auto-resolution (on-screen text remains in the
+        source language).
+        """
         pipeline = self._ensure_loaded()
         segments_gen, info = pipeline.transcribe(
             str(audio_path),
@@ -159,14 +166,16 @@ class WhisperTranscriber:
             batch_size=self._config.whisper_batch_size,
             vad_filter=True,
             word_timestamps=False,
+            task=self._config.whisper_task,
         )
+        segment_language = "en" if self._config.whisper_task == "translate" else info.language
         segments = [
             TranscriptSegment(
                 start=float(s.start),
                 end=float(s.end),
                 text=s.text.strip(),
                 confidence=getattr(s, "avg_logprob", None),
-                language=info.language,
+                language=segment_language,
             )
             for s in segments_gen
         ]

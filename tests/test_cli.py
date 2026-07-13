@@ -1730,3 +1730,61 @@ def test_transcribe_local_dir_routes_to_photo_path(tmp_path: Path, monkeypatch) 
     assert result.exit_code == 0, result.output
     mock_ocr_cls.return_value.extract_images.assert_called_once()
     mock_ocr_cls.return_value.extract.assert_not_called()
+
+
+# ── Sprint 9.9: whisper translate flag ─────────────────────────────────────
+
+
+def test_translate_flag_sets_whisper_task(tmp_path: Path) -> None:
+    """``--translate`` on ``transcribe`` sets whisper_task='translate' on config."""
+    output = tmp_path / "out.json"
+    with patch("omniscribe.cli.process_single_video") as mock_proc:
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output), "--translate"],
+        )
+    assert result.exit_code == 0, result.output
+    config = mock_proc.call_args[0][1]
+    assert config.whisper_task == "translate"
+
+
+def test_translate_no_translate_resets_to_transcribe(tmp_path: Path) -> None:
+    """``--no-translate`` on ``transcribe`` sets whisper_task='transcribe'."""
+    output = tmp_path / "out.json"
+    with patch("omniscribe.cli.process_single_video") as mock_proc:
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "fake.mp4", "--output", str(output), "--no-translate"],
+        )
+    assert result.exit_code == 0, result.output
+    config = mock_proc.call_args[0][1]
+    assert config.whisper_task == "transcribe"
+
+
+def test_transcribe_many_translate_flag_sets_whisper_task(tmp_path: Path) -> None:
+    """``--translate`` on ``transcribe-many`` sets whisper_task='translate' on each item."""
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text("https://example.com/1\nhttps://example.com/2\n", encoding="utf-8")
+    out_dir = tmp_path / "out"
+    with (
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch(
+            "omniscribe.cli.compute_output_path",
+            side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
+        ),
+    ):
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe-many",
+                str(urls_file),
+                "--output-dir",
+                str(out_dir),
+                "--format",
+                "md",
+                "--translate",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    for call in mock_proc.call_args_list:
+        assert call.args[1].whisper_task == "translate"

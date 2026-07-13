@@ -74,6 +74,7 @@ def test_transcribe_lazy_loads_and_wraps_model(tmp_path: Path) -> None:
         batch_size=4,
         vad_filter=True,
         word_timestamps=False,
+        task="transcribe",
     )
     assert segments == []
     assert language == "en"
@@ -203,3 +204,72 @@ def test_transcribe_reuses_pipeline_across_calls(tmp_path: Path) -> None:
     assert mock_model_cls.call_count == 1
     assert mock_pipe_cls.call_count == 1
     assert fake_pipeline.transcribe.call_count == 2
+
+
+# ── Sprint 9.9: whisper_task (transcribe vs translate) ────────────────────
+
+
+def test_transcribe_passes_task_to_pipeline(tmp_path: Path) -> None:
+    """Default whisper_task='transcribe' is forwarded to pipeline.transcribe()."""
+    config = _make_config()
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"riff-fake")
+
+    fake_pipeline = MagicMock()
+    fake_pipeline.transcribe.return_value = (iter([]), SimpleNamespace(language="en"))
+
+    with (
+        patch("omniscribe.asr.whisper.WhisperModel"),
+        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+    ):
+        WhisperTranscriber(config).transcribe(audio)
+
+    _, kwargs = fake_pipeline.transcribe.call_args
+    assert kwargs["task"] == "transcribe"
+
+
+def test_default_task_segment_language_is_detected(tmp_path: Path) -> None:
+    """With whisper_task='transcribe' (default), segment language matches detected source."""
+    config = _make_config()
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"riff-fake")
+
+    fake_pipeline = MagicMock()
+    fake_pipeline.transcribe.return_value = (
+        iter([_fake_segment(0.0, 1.0, "hallo")]),
+        SimpleNamespace(language="de"),
+    )
+
+    with (
+        patch("omniscribe.asr.whisper.WhisperModel"),
+        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+    ):
+        segments, detected_language = WhisperTranscriber(config).transcribe(audio)
+
+    assert segments[0].language == "de"
+    assert detected_language == "de"
+
+
+def test_translate_task_passed_and_segment_language_en(tmp_path: Path) -> None:
+    """whisper_task='translate' → pipeline receives task='translate';
+    segment language = 'en'; detected_language stays source (info.language)."""
+    config = _make_config().model_copy(update={"whisper_task": "translate"})
+    audio = tmp_path / "audio.wav"
+    audio.write_bytes(b"riff-fake")
+
+    fake_pipeline = MagicMock()
+    fake_pipeline.transcribe.return_value = (
+        iter([_fake_segment(0.0, 1.0, "hello")]),
+        SimpleNamespace(language="de"),
+    )
+
+    with (
+        patch("omniscribe.asr.whisper.WhisperModel"),
+        patch("omniscribe.asr.whisper.BatchedInferencePipeline", return_value=fake_pipeline),
+    ):
+        segments, detected_language = WhisperTranscriber(config).transcribe(audio)
+
+    _, kwargs = fake_pipeline.transcribe.call_args
+    assert kwargs["task"] == "translate"
+    assert segments[0].language == "en"
+    assert detected_language == "de"
