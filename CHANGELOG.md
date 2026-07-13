@@ -7,9 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-13
+
 ### Added
 
-- **HTTP API mode** (v0.2.0 / Sprint 9.10) — new `omniscribe serve` command starts a FastAPI server with `POST /jobs`, `GET /jobs`, `GET /jobs/{id}`, and `GET /healthz` endpoints. Requires the `[api]` extra: `uv sync --extra api`. Single-worker executor with per-job temp directories. v1 limitations documented in README (no auth, no persistence, shutdown-hang). PR #??.
+- **HTTP API mode** (#55) — new `omniscribe serve` command starts a FastAPI server with `POST /jobs`, `GET /jobs`, `GET /jobs/{id}`, and `GET /healthz` endpoints. Requires the `[api]` extra: `uv sync --extra api`. Single-worker executor with per-job temp directories. v1 limitations documented in README (no auth, no persistence, shutdown-hang).
 
 ## [0.1.9] - 2026-07-13
 
@@ -166,6 +168,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.2.0]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.0
 [0.1.9]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.9
 [0.1.8]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.8
 [0.1.7]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.7
