@@ -20,6 +20,20 @@ _VALID_PLATFORM_PROFILES: frozenset[str] = frozenset({"auto"} | {p.value for p i
 # CLI's ``click.Choice`` set (see cli.py) so env and flag paths stay in sync.
 _VALID_OUTPUT_FORMATS: frozenset[str] = frozenset({"json", "txt", "srt", "md"})
 
+# Sprint 9.5 — model-variant whitelists.
+# Override values accepted by ocr_{det,rec}_model_type which map directly to
+# RapidOCR's ModelType enum members lowercase; unknown values are rejected by
+# the field_validator.
+_VALID_MODEL_TYPES: frozenset[str] = frozenset({"mobile", "server"})
+
+# Case-insensitive alias map for ocr_{det,rec}_ocr_version.
+# Keys are the lowercased canonical form; values are what RapidOCR's
+# OCRVersion enum expects.
+_OCR_VERSION_CANONICAL: dict[str, str] = {
+    "pp-ocrv4": "PP-OCRv4",
+    "pp-ocrv5": "PP-OCRv5",
+}
+
 
 class OmniScribeConfig(BaseSettings):
     """OmniScribe runtime configuration.
@@ -62,6 +76,14 @@ class OmniScribeConfig(BaseSettings):
     ocr_det_limit_side_len: int | None = Field(default=None, ge=32)
     ocr_det_thresh: float | None = Field(default=None, gt=0, lt=1)
     ocr_det_box_thresh: float | None = Field(default=None, gt=0, lt=1)
+    # Sprint 9.5 — model-variant knobs (None = rapidocr defaults: mobile / PP-OCRv4).
+    # Exposed for the #41 capability probe. Rec knobs shipped alongside so a
+    # rec-bottleneck finding doesn't need a second sprint; the measurement
+    # matrix keeps rec at defaults unless det finds text with poor similarity.
+    ocr_det_model_type: str | None = None
+    ocr_det_ocr_version: str | None = None
+    ocr_rec_model_type: str | None = None
+    ocr_rec_ocr_version: str | None = None
 
     # ── LLM cleanup ──────────────────────────────────────
     # Opt-in per-segment OCR-artefact cleanup via a local Ollama model.
@@ -113,6 +135,10 @@ class OmniScribeConfig(BaseSettings):
         "ocr_det_limit_side_len",
         "ocr_det_thresh",
         "ocr_det_box_thresh",
+        "ocr_det_model_type",
+        "ocr_det_ocr_version",
+        "ocr_rec_model_type",
+        "ocr_rec_ocr_version",
         mode="before",
     )
     @classmethod
@@ -225,6 +251,40 @@ class OmniScribeConfig(BaseSettings):
 
         allowed = ", ".join(sorted({"auto"} | {m.value for m in LangRec} | set(_ISO_TO_LANGREC)))
         raise ValueError(f"ocr_language must be one of: {allowed}; got {v!r}")
+
+    @field_validator("ocr_det_model_type", "ocr_rec_model_type", mode="after")
+    @classmethod
+    def _validate_model_type(cls, v: str | None) -> str | None:
+        """Normalise and validate model-type knobs.
+
+        Accepts ``None`` (passthrough = use rapidocr default). Lowercases
+        the value, then checks it is one of the known model types
+        (``_VALID_MODEL_TYPES``). Return is the lowercased canonical form.
+        """
+        if v is None:
+            return None
+        lowered = v.lower()
+        if lowered not in _VALID_MODEL_TYPES:
+            allowed = ", ".join(sorted(_VALID_MODEL_TYPES))
+            raise ValueError(f"model_type must be one of: {allowed}; got {v!r}")
+        return lowered
+
+    @field_validator("ocr_det_ocr_version", "ocr_rec_ocr_version", mode="after")
+    @classmethod
+    def _validate_ocr_version(cls, v: str | None) -> str | None:
+        """Normalise and validate ocr-version knobs.
+
+        Accepts ``None`` (passthrough = use rapidocr default). Case-insensitively
+        maps the value through ``_OCR_VERSION_CANONICAL``. Rejects unknown values
+        with a list of allowed forms.
+        """
+        if v is None:
+            return None
+        canonical = _OCR_VERSION_CANONICAL.get(v.lower())
+        if canonical is None:
+            allowed = ", ".join(sorted(_OCR_VERSION_CANONICAL))
+            raise ValueError(f"ocr_version must be one of: {allowed}; got {v!r}")
+        return canonical
 
     @field_validator("merge_similarity_threshold", mode="after")
     @classmethod

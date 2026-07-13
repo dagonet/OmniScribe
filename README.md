@@ -132,7 +132,7 @@ segments. The noise sits alongside them.
 - Tune `OMNI_OCR_MIN_CONFIDENCE` (default `0.6`) higher to suppress
   low-confidence partial detections, at the cost of also missing some real
   text.
-- The `OMNI_OCR_DET_LIMIT_SIDE_LEN` / `OMNI_OCR_DET_THRESH` / `OMNI_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays).
+- The `OMNI_OCR_DET_LIMIT_SIDE_LEN` / `OMNI_OCR_DET_THRESH` / `OMNI_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays). Sprint 9.5 adds model-variant overrides (`OMNI_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}`) for switching to higher-capacity models (server / PP-OCRv5), with an automatic CH-det-lang override when those variants are selected (registry limitation — only `ch_*` det models ship for server/v5).
 
 ## Docker
 

@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-from rapidocr import LangRec
+from rapidocr import LangRec, ModelType, OCRVersion
 
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
@@ -603,3 +603,95 @@ def test_extract_aggregates_same_line_bboxes_into_one_segment(tmp_path: Path) ->
     assert seg.end == 2.5
     # Mean confidence of (0.9, 0.8).
     assert seg.confidence == pytest.approx(0.85)
+
+
+# ── Sprint 9.5: model-variant knob wiring ────────────────────────────────────
+
+
+def test_params_wiring_with_model_overrides(tmp_path: Path) -> None:
+    """Sprint 9.5 — all four model knobs passed as enum instances in params dict.
+
+    Asserts our dict construction only; rapidocr acceptance is gated by
+    the #41 matrix wiring run.
+    """
+    config = _make_config(
+        ocr_det_model_type="server",
+        ocr_det_ocr_version="PP-OCRv5",
+        ocr_rec_model_type="mobile",
+        ocr_rec_ocr_version="PP-OCRv4",
+    )
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    _, kwargs = mock_rapid_cls.call_args
+    params = kwargs["params"]
+    assert isinstance(params["Det.model_type"], ModelType)
+    assert params["Det.model_type"].value == "server"
+    assert isinstance(params["Det.ocr_version"], OCRVersion)
+    assert params["Det.ocr_version"].value == "PP-OCRv5"
+    assert isinstance(params["Rec.model_type"], ModelType)
+    assert params["Rec.model_type"].value == "mobile"
+    assert isinstance(params["Rec.ocr_version"], OCRVersion)
+    assert params["Rec.ocr_version"].value == "PP-OCRv4"
+
+
+@pytest.mark.parametrize(
+    "override_kwargs",
+    [
+        {"ocr_det_model_type": "server"},
+        {"ocr_det_ocr_version": "PP-OCRv5"},
+    ],
+)
+def test_server_det_forces_ch_det_lang(tmp_path: Path, override_kwargs: dict[str, object]) -> None:
+    """Server/v5 det forces Det.lang_type to CH regardless of ocr_language.
+
+    When neither server nor v5 is selected, det lang stays at the existing
+    behaviour (EN for latin-script languages).
+    """
+    # With server/v5 override and a non-CH language, Det.lang_type must be CH.
+    config = _make_config(ocr_language="de", **override_kwargs)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    _, kwargs = mock_rapid_cls.call_args
+    params = kwargs["params"]
+    assert params["Det.lang_type"] is LangRec.CH
+
+
+def test_default_knobs_still_use_en_det_lang(tmp_path: Path) -> None:
+    """With no model knobs, Det.lang_type stays EN for latin-script languages
+    (existing behaviour unchanged)."""
+    config = _make_config(ocr_language="de")
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    _, kwargs = mock_rapid_cls.call_args
+    params = kwargs["params"]
+    assert params["Det.lang_type"] is LangRec.EN, "CH override must NOT fire when knobs are None"
