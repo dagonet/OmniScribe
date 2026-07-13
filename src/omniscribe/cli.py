@@ -18,9 +18,10 @@ from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from omniscribe import __version__
 from omniscribe.acquire.downloader import download_video
+from omniscribe.acquire.photo import download_photo_post, is_photo_post, scan_photo_dir
 from omniscribe.acquire.platform import Platform
 from omniscribe.asr.whisper import WhisperTranscriber
-from omniscribe.audio import extract_audio
+from omniscribe.audio import extract_audio, get_duration
 from omniscribe.batch import (
     BatchState,
     compute_output_path,
@@ -301,22 +302,68 @@ def process_single_video(
     """
     temp_dir = config.temp_dir
     try:
-        video_path = download_video(source, temp_dir)
-        audio_path = extract_audio(video_path, temp_dir / "audio.wav")
-        speech_segments, detected_language = WhisperTranscriber(config).transcribe(audio_path)
+        # ---- Photo-mode routing (before download_video) ----
+        photo_post = None
+        if Path(source).is_dir():
+            photo_post = scan_photo_dir(Path(source))
+        elif is_photo_post(source):
+            photo_post = download_photo_post(source, temp_dir)
 
+        if photo_post is not None:
+            # Photo branch: audio, ASR, and timestamp computation.
+            if photo_post.audio_path:
+                audio_path = extract_audio(photo_post.audio_path, temp_dir / "audio.wav")
+                speech_segments, detected_language = WhisperTranscriber(config).transcribe(
+                    audio_path
+                )
+            else:
+                speech_segments, detected_language = [], "en"
+
+            audio_duration = get_duration(photo_post.audio_path) if photo_post.audio_path else None
+            if audio_duration is not None and photo_post.image_paths:
+                n = len(photo_post.image_paths)
+                photo_timestamps = tuple(
+                    (i * audio_duration / n, (i + 1) * audio_duration / n) for i in range(n)
+                )
+            else:
+                photo_timestamps = None
+
+            if ocr_active:
+                profile = resolve_profile(config, source)
+                ocr_engine = RapidOCREngine(config, profile=profile)
+                funnel = FunnelCounts()
+                ocr_segments = ocr_engine.extract_images(
+                    photo_post.image_paths,
+                    detected_language=detected_language,
+                    funnel=funnel,
+                    timestamps=photo_timestamps,
+                )
+                logger.info(
+                    "OCR: %d segments from %d images",
+                    len(ocr_segments),
+                    ocr_engine.last_frame_count,
+                )
+        else:
+            # ---- Existing video path (byte-identical) ----
+            video_path = download_video(source, temp_dir)
+            audio_path = extract_audio(video_path, temp_dir / "audio.wav")
+            speech_segments, detected_language = WhisperTranscriber(config).transcribe(audio_path)
+
+            if ocr_active:
+                profile = resolve_profile(config, source)
+                ocr_engine = RapidOCREngine(config, profile=profile)
+                funnel = FunnelCounts()
+                ocr_segments = ocr_engine.extract(
+                    video_path, detected_language=detected_language, funnel=funnel
+                )
+                logger.info(
+                    "OCR: %d segments from %d frames",
+                    len(ocr_segments),
+                    ocr_engine.last_frame_count,
+                )
+
+        # ---- Shared filter/dedup/merge pipeline (photo + video) ----
         if ocr_active:
-            profile = resolve_profile(config, source)
-            ocr_engine = RapidOCREngine(config, profile=profile)
-            funnel = FunnelCounts()
-            ocr_segments = ocr_engine.extract(
-                video_path, detected_language=detected_language, funnel=funnel
-            )
-            logger.info(
-                "OCR: %d segments from %d frames",
-                len(ocr_segments),
-                ocr_engine.last_frame_count,
-            )
             if config.ui_filter_enabled:
                 pre_pattern = len(ocr_segments)
                 ocr_segments = filter_by_patterns(ocr_segments, profile.ui_text_patterns)

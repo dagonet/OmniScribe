@@ -54,3 +54,43 @@ def extract_audio(video: Path, out: Path) -> Path:
             detail = f"exit status {e.returncode} with no stderr output"
         raise OmniScribeError(f"ffmpeg failed: {detail}") from None
     return out
+
+
+def get_duration(path: Path) -> float | None:
+    """Return media duration in seconds via ffprobe, or None on failure.
+
+    Used for slide-timestamp spreading in the photo-mode pipeline. Logs a
+    warning on any failure (missing ffprobe, parse error, etc.) and returns
+    None so callers can fall back to index-based timestamps.
+    """
+    ffprobe_path: str | None = shutil.which("ffprobe")
+    if ffprobe_path is None:
+        logger.warning("ffprobe not found on PATH -- cannot determine duration")
+        return None
+
+    try:
+        result = subprocess.run(
+            [
+                ffprobe_path,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "csv=p=0",
+                str(path),
+            ],
+            capture_output=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            logger.warning("ffprobe returned non-zero exit status %d", result.returncode)
+            return None
+        raw = result.stdout.decode(errors="replace").strip()
+        if not raw:
+            logger.warning("ffprobe produced empty output for %s", path)
+            return None
+        return float(raw)
+    except (subprocess.TimeoutExpired, FileNotFoundError, ValueError) as exc:
+        logger.warning("ffprobe failed for %s: %s", path, exc)
+        return None

@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import cv2
 from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
 
 from omniscribe.errors import OmniScribeError
@@ -24,6 +25,7 @@ from omniscribe.ocr.ui_filter import mask_zones
 from omniscribe.output import TranscriptSegment
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from omniscribe.config import OmniScribeConfig
@@ -220,6 +222,63 @@ class RapidOCREngine:
                 ) from exc
         return self._engine
 
+    def _process_frame(
+        self,
+        frame,
+        start: float,
+        end: float,
+        mask_rects: list,
+        funnel: FunnelCounts | None,
+    ) -> list[TranscriptSegment]:
+        """Process a single frame through the OCR pipeline.
+
+        Handles preprocessing, optional zone masking, engine inference, result
+        unpacking, bbox aggregation, and segment construction. Used by both
+        :meth:`extract` (video frames) and :meth:`extract_images` (photo
+        slides).
+        """
+        threshold = self._config.ocr_min_confidence
+        language = self._config.ocr_language
+
+        processed_frame = preprocess(frame)
+        if mask_rects:
+            processed_frame = mask_zones(processed_frame, mask_rects)
+        result = self._engine(processed_frame)
+        # Guard explicitly for ``None`` rather than ``or ()``: ``boxes`` is
+        # a numpy array on populated frames and ``or`` raises on numpy
+        # truthiness. ``txts`` / ``scores`` are tuples today, but the same
+        # pattern keeps the call site robust if RapidOCR ever returns
+        # numpy arrays for them too.
+        boxes_attr = getattr(result, "boxes", None)
+        boxes = boxes_attr if boxes_attr is not None else ()
+        texts_attr = getattr(result, "txts", None)
+        texts = texts_attr if texts_attr is not None else ()
+        scores_attr = getattr(result, "scores", None)
+        scores = scores_attr if scores_attr is not None else ()
+        if funnel is not None:
+            funnel.raw_bboxes += len(boxes)
+        aggregated = aggregate_frame_bboxes(
+            boxes,
+            texts,
+            scores,
+            min_confidence=threshold,
+        )
+        if funnel is not None:
+            funnel.post_aggregation += len(aggregated)
+        frame_segments: list[TranscriptSegment] = []
+        for text, mean_score in aggregated:
+            frame_segments.append(
+                TranscriptSegment(
+                    start=start,
+                    end=end,
+                    text=text,
+                    source="ON-SCREEN",
+                    confidence=mean_score,
+                    language=language,
+                )
+            )
+        return frame_segments
+
     def extract(
         self,
         video_path: Path,
@@ -242,9 +301,7 @@ class RapidOCREngine:
         When ``funnel`` is provided, stage-wise counts are recorded on the
         :class:`FunnelCounts` instance for pipeline diagnostics.
         """
-        engine = self._ensure_loaded(detected_language=detected_language)
-        threshold = self._config.ocr_min_confidence
-        language = self._config.ocr_language
+        self._ensure_loaded(detected_language=detected_language)
 
         frame_count = 0
         segments: list[TranscriptSegment] = []
@@ -256,7 +313,6 @@ class RapidOCREngine:
                 mask_rects.extend(profile.auto_caption_zones)
         else:
             mask_rects = []
-        apply_mask = bool(mask_rects)
         for timestamp, frame in sample_frames(
             video_path,
             self._config.ocr_sample_fps,
@@ -264,43 +320,85 @@ class RapidOCREngine:
             scene_change_threshold=self._config.scene_change_threshold,
         ):
             frame_count += 1
-            processed_frame = preprocess(frame)
-            if apply_mask:
-                processed_frame = mask_zones(processed_frame, mask_rects)
-            result = engine(processed_frame)
-            # Guard explicitly for ``None`` rather than ``or ()``: ``boxes`` is
-            # a numpy array on populated frames and ``or`` raises on numpy
-            # truthiness. ``txts`` / ``scores`` are tuples today, but the same
-            # pattern keeps the call site robust if RapidOCR ever returns
-            # numpy arrays for them too.
-            boxes_attr = getattr(result, "boxes", None)
-            boxes = boxes_attr if boxes_attr is not None else ()
-            texts_attr = getattr(result, "txts", None)
-            texts = texts_attr if texts_attr is not None else ()
-            scores_attr = getattr(result, "scores", None)
-            scores = scores_attr if scores_attr is not None else ()
-            if funnel is not None:
-                funnel.raw_bboxes += len(boxes)
-            aggregated = aggregate_frame_bboxes(
-                boxes,
-                texts,
-                scores,
-                min_confidence=threshold,
-            )
-            if funnel is not None:
-                funnel.post_aggregation += len(aggregated)
-            for text, mean_score in aggregated:
-                segments.append(
-                    TranscriptSegment(
-                        start=timestamp,
-                        end=timestamp,
-                        text=text,
-                        source="ON-SCREEN",
-                        confidence=mean_score,
-                        language=language,
-                    )
+            segments.extend(
+                self._process_frame(
+                    frame,
+                    start=timestamp,
+                    end=timestamp,
+                    mask_rects=mask_rects,
+                    funnel=funnel,
                 )
+            )
         if funnel is not None:
             funnel.post_extract += len(segments)
         self.last_frame_count = frame_count
+        return segments
+
+    def extract_images(
+        self,
+        image_paths: Sequence[Path],
+        *,
+        detected_language: str | None = None,
+        funnel: FunnelCounts | None = None,
+        timestamps: Sequence[tuple[float, float]] | None = None,
+    ) -> list[TranscriptSegment]:
+        """OCR each image in ``image_paths`` and return text segments.
+
+        Designed for native photo-post processing. ``mask_rects`` is always
+        ``[]`` -- downloaded source slides carry no rendered UI chrome, so zone
+        masking (which targets screen-rendered video chrome) is skipped.
+
+        Parameters
+        ----------
+        image_paths:
+            Paths to slide images in presentation order.
+        detected_language:
+            Language detected by the ASR pipeline, forwarded to engine init.
+        funnel:
+            Optional funnel diagnostics counter.
+        timestamps:
+            If provided, ``timestamps[i]`` = (start, end) for image i, and
+            must have the same length as ``image_paths``. If omitted, defaults
+            to ``(float(i), float(i) + 1.0)`` for each image.
+
+        Returns
+        -------
+        list[TranscriptSegment]
+            OCR segments with timestamps per the ``timestamps`` parameter.
+        """
+        self._ensure_loaded(detected_language=detected_language)
+
+        n = len(image_paths)
+        if timestamps is not None and len(timestamps) != n:
+            raise ValueError(
+                f"timestamps length ({len(timestamps)}) must match image_paths length ({n})"
+            )
+
+        segments: list[TranscriptSegment] = []
+        processed_count = 0
+        # Downloaded source slides carry no rendered UI chrome; zone masking
+        # only applies to screen-rendered video frames.
+        mask_rects: list = []
+
+        for i, img_path in enumerate(image_paths):
+            frame = cv2.imread(str(img_path))
+            if frame is None:
+                logger.warning("Skipping unreadable image: %s", img_path)
+                continue
+
+            start, end = timestamps[i] if timestamps else (float(i), float(i) + 1.0)
+            segments.extend(
+                self._process_frame(
+                    frame,
+                    start=start,
+                    end=end,
+                    mask_rects=mask_rects,
+                    funnel=funnel,
+                )
+            )
+            processed_count += 1
+
+        if funnel is not None:
+            funnel.post_extract += len(segments)
+        self.last_frame_count = processed_count
         return segments

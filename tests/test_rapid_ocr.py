@@ -695,3 +695,101 @@ def test_default_knobs_still_use_en_det_lang(tmp_path: Path) -> None:
     _, kwargs = mock_rapid_cls.call_args
     params = kwargs["params"]
     assert params["Det.lang_type"] is LangRec.EN, "CH override must NOT fire when knobs are None"
+
+
+# -- extract_images tests ----------------------------------------------------
+
+
+def test_extract_images_default_index_timestamps(tmp_path: Path) -> None:
+    """Three images get default timestamps (0,1), (1,2), (2,3)."""
+    config = _make_config()
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=("hello",), scores=(0.9,))
+
+    images = []
+    for i in range(3):
+        p = tmp_path / f"slide_{i}.jpg"
+        p.write_bytes(b"fake")
+        images.append(p)
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("omniscribe.ocr.rapid_ocr.cv2.imread", return_value=_fake_frame()),
+    ):
+        ocr = RapidOCREngine(config)
+        segments = ocr.extract_images(images)
+
+    assert len(segments) == 3
+    assert [(s.start, s.end) for s in segments] == [(0.0, 1.0), (1.0, 2.0), (2.0, 3.0)]
+    assert ocr.last_frame_count == 3
+
+
+def test_extract_images_explicit_timestamps(tmp_path: Path) -> None:
+    """Explicit timestamps are honored."""
+    config = _make_config()
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=("hello",), scores=(0.9,))
+
+    images = [tmp_path / "a.jpg", tmp_path / "b.jpg"]
+    for p in images:
+        p.write_bytes(b"fake")
+
+    ts = [(10.0, 15.0), (15.0, 20.0)]
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("omniscribe.ocr.rapid_ocr.cv2.imread", return_value=_fake_frame()),
+    ):
+        ocr = RapidOCREngine(config)
+        segments = ocr.extract_images(images, timestamps=ts)
+
+    assert len(segments) == 2
+    assert [(s.start, s.end) for s in segments] == [(10.0, 15.0), (15.0, 20.0)]
+
+
+def test_extract_images_skips_unreadable(tmp_path: Path, caplog) -> None:
+    """Unreadable image (imread returns None) triggers warning and skip."""
+    config = _make_config()
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=("text",), scores=(0.9,))
+
+    images = [tmp_path / "good.jpg", tmp_path / "bad.jpg", tmp_path / "also_good.jpg"]
+    for p in images:
+        p.write_bytes(b"fake")
+
+    # Return None for the second image.
+    read_results = [_fake_frame(), None, _fake_frame()]
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("omniscribe.ocr.rapid_ocr.cv2.imread", side_effect=read_results),
+        caplog.at_level(logging.WARNING, logger="omniscribe.ocr.rapid_ocr"),
+    ):
+        ocr = RapidOCREngine(config)
+        segments = ocr.extract_images(images)
+
+    assert len(segments) == 2
+    assert ocr.last_frame_count == 2
+    assert "Skipping unreadable image" in caplog.text
+
+
+def test_extract_images_no_masking(tmp_path: Path) -> None:
+    """extract_images does NOT call mask_zones even with a profile that has zones."""
+    from omniscribe.platforms.tiktok import TIKTOK_PROFILE
+
+    config = _make_config(ui_filter_enabled=True)
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=("hello",), scores=(0.9,))
+
+    img = tmp_path / "slide.jpg"
+    img.write_bytes(b"fake")
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
+        patch("omniscribe.ocr.rapid_ocr.cv2.imread", return_value=_fake_frame()),
+        patch("omniscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
+    ):
+        ocr = RapidOCREngine(config, profile=TIKTOK_PROFILE)
+        ocr.extract_images([img])
+
+    mock_mask.assert_not_called()

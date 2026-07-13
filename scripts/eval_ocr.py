@@ -27,16 +27,30 @@ from omniscribe.ocr.rapid_ocr import RapidOCREngine
 from omniscribe.ocr.ui_filter import filter_by_frequency, filter_by_patterns
 from omniscribe.platforms.registry import resolve_profile
 
+_IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Evaluate OCR output against ground truth.",
     )
-    parser.add_argument("video", type=str, help="Path to the video file.")
+    parser.add_argument(
+        "video",
+        type=str,
+        nargs="?",
+        default=None,
+        help="Path to the video file (omit when using --images).",
+    )
     parser.add_argument(
         "ground_truth",
         type=str,
         help="Path to the ground-truth JSON file.",
+    )
+    parser.add_argument(
+        "--images",
+        type=str,
+        default=None,
+        help="Directory of slide image files (use instead of video positional).",
     )
     parser.add_argument(
         "--ocr-language",
@@ -80,6 +94,10 @@ def main() -> None:
     parser = _build_parser()
     args = parser.parse_args()
 
+    # Validate: exactly one of (video, --images).
+    if (args.video is None) == (args.images is None):
+        parser.error("Exactly one of video (positional) or --images must be provided.")
+
     # Load ground truth.
     gt = _load_ground_truth(args.ground_truth)
     ocr_language = args.ocr_language or gt.language
@@ -91,13 +109,25 @@ def main() -> None:
         config_updates["scene_change_enabled"] = False
     config = config.model_copy(update=config_updates)
 
-    # Resolve platform profile.
-    profile = resolve_profile(config, args.video)
+    # Resolve platform profile (images mode uses the dir path as source).
+    source = args.images if args.images is not None else args.video
+    profile = resolve_profile(config, source)
 
     # OCR pipeline (no ASR, no merge).
     ocr_engine = RapidOCREngine(config, profile=profile)
     funnel = FunnelCounts() if args.funnel else None
-    ocr_segments = ocr_engine.extract(Path(args.video), funnel=funnel)
+
+    if args.images is not None:
+        # Images mode: scan directory for slides.
+        image_dir = Path(args.images)
+        image_paths = sorted(
+            p for p in image_dir.iterdir() if p.is_file() and p.suffix.lower() in _IMAGE_EXTS
+        )
+        if not image_paths:
+            parser.error(f"No image files found in {args.images}")
+        ocr_segments = ocr_engine.extract_images(image_paths, timestamps=None, funnel=funnel)
+    else:
+        ocr_segments = ocr_engine.extract(Path(args.video), funnel=funnel)
 
     # UI filters -- same order as cli.py process_single_video.
     if (not args.no_ui_filter) and config.ui_filter_enabled and profile is not None:

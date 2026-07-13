@@ -52,6 +52,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+photo = [
+    "gallery-dl>=1.30",
+]
 llm = [
     "ollama>=0.4",
 ]

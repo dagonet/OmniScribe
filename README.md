@@ -101,6 +101,30 @@ Videos from any other platform work too — just without UI-specific filtering.
 - **LLM OCR cleanup (optional)** — Fix OCR artefacts on screen-text segments via a local Ollama model. Opt-in with `--llm-cleanup`. Requires `uv sync --extra llm` and a running Ollama with the configured model pulled (default `llama3.2:3b`).
 - **LLM ASR punctuation cleanup (optional)** — Improve punctuation and capitalization on speech segments via a local Ollama model. Opt-in with `--asr-cleanup`. Reuses the same `[llm]` extras and Ollama host as OCR cleanup.
 
+## TikTok Photo Posts
+
+TikTok ``/photo/`` posts are image slideshows with optional audio. yt-dlp cannot
+download these; OmniScribe uses **gallery-dl** instead.
+
+```bash
+# Install with the photo extra
+uv sync --extra photo
+
+# Transcribe a TikTok photo post (auto-detected)
+omniscribe transcribe https://www.tiktok.com/@user/photo/1234567890
+
+# Process a local directory of slides + optional audio
+omniscribe transcribe ./my-photo-dir/
+```
+
+**Timestamp semantics:** When the photo post has an audio track, slides are evenly
+spread across the audio duration (slide i of n gets timestamp i/n through
+(i+1)/n of total duration). Without audio, each slide gets a 1-second index-based
+window (slide 0: 0-1s, slide 1: 1-2s, ...). The OCR runs at native resolution on
+each slide, unlike stitched-video processing where resolution is constrained by
+the video codec (see #46 and #41 for benchmarks — native slides yield ~56
+detection boxes vs ~17 on stitched frames).
+
 ## Known Limitations
 
 OmniScribe is in active development (alpha). The pipeline produces a usable

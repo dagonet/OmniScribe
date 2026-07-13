@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -1656,3 +1656,77 @@ def test_transcribe_many_all_playlists_empty(tmp_path: Path, monkeypatch) -> Non
     assert result.exit_code == 0, result.output
     mock_proc.assert_not_called()
     assert not (out_dir / ".omniscribe-batch-state.json").exists()
+
+
+# -- Sprint 9.6: photo-mode routing ------------------------------------------
+
+
+def test_transcribe_photo_url_routes_to_photo_path(tmp_path: Path, monkeypatch) -> None:
+    """Photo URL is routed to download_photo_post + extract_images."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    output = tmp_path / "out.json"
+
+    photo_post = MagicMock()
+    photo_post.image_paths = []
+    photo_post.audio_path = None
+
+    dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
+    with (
+        dl,
+        ex,
+        wh as mock_whisper_cls,
+        oc as mock_ocr_cls,
+        lc,
+        ac,
+        patch("omniscribe.cli.is_photo_post", return_value=True),
+        patch("omniscribe.cli.download_photo_post", return_value=photo_post),
+        patch("omniscribe.cli.get_duration", return_value=None),
+    ):
+        mock_ocr_cls.return_value.extract_images.return_value = []
+        mock_ocr_cls.return_value.last_frame_count = 0
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", "https://www.tiktok.com/@u/photo/123", "--output", str(output)],
+        )
+
+    assert result.exit_code == 0, result.output
+    # extract_images must be called instead of extract (photo route).
+    mock_ocr_cls.return_value.extract_images.assert_called_once()
+    mock_ocr_cls.return_value.extract.assert_not_called()
+
+
+def test_transcribe_local_dir_routes_to_photo_path(tmp_path: Path, monkeypatch) -> None:
+    """Local directory with images triggers scan_photo_dir -> extract_images."""
+    monkeypatch.setenv("OMNI_TEMP_DIR", str(tmp_path / "omni"))
+    monkeypatch.setenv("OMNI_KEEP_TEMP_FILES", "true")
+    output = tmp_path / "out.json"
+
+    # Create a directory with images.
+    photo_dir = tmp_path / "slides"
+    photo_dir.mkdir()
+    (photo_dir / "img1.jpg").write_bytes(b"fake")
+    (photo_dir / "img2.jpg").write_bytes(b"fake")
+
+    dl, ex, wh, oc, lc, ac = _patched_pipeline(tmp_path)
+    with (
+        dl,
+        ex,
+        wh as mock_whisper_cls,
+        oc as mock_ocr_cls,
+        lc,
+        ac,
+        patch("omniscribe.cli.get_duration", return_value=None),
+    ):
+        mock_ocr_cls.return_value.extract_images.return_value = []
+        mock_ocr_cls.return_value.last_frame_count = 0
+        mock_whisper_cls.return_value.transcribe.return_value = ([], "en")
+        result = CliRunner().invoke(
+            app,
+            ["transcribe", str(photo_dir), "--output", str(output)],
+        )
+
+    assert result.exit_code == 0, result.output
+    mock_ocr_cls.return_value.extract_images.assert_called_once()
+    mock_ocr_cls.return_value.extract.assert_not_called()
