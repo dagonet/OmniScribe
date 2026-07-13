@@ -285,3 +285,58 @@ def test_x_gap_tolerance_ratio_passthrough() -> None:
 
     assert len(out) == 1
     assert out[0][0] == "left right"
+
+
+# ── Sprint 9.7: Position-aware intra-frame dedup ─────────────────────────────
+
+
+def test_same_text_nested_box_deduped() -> None:
+    """A fully-nested duplicate (RapidOCR double-detection) is still deduped."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # first detection
+        _box(10.0, 5.0, 40.0, 25.0),  # nested inside the first
+    ]
+    out = aggregate_frame_bboxes(boxes, ["OK", "OK"], [0.9, 0.9], min_confidence=0.6)
+
+    assert len(out) == 1
+    assert out[0][0] == "OK"
+
+
+def test_same_text_cross_column_kept() -> None:
+    """Same text in different columns is no longer silently dropped."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # left column
+        _box(150.0, 0.0, 200.0, 30.0),  # right column, same y-line, gap=100
+    ]
+    out = aggregate_frame_bboxes(boxes, ["Eier", "Eier"], [0.9, 0.9], min_confidence=0.6)
+
+    # Gap 100 > 2.0 * mean_h 30 → split into 2 segments, both "Eier"
+    assert len(out) == 2
+    assert out[0][0] == "Eier"
+    assert out[1][0] == "Eier"
+
+
+def test_same_text_different_row_kept() -> None:
+    """Same text on different rows is kept (fixes checklist-style repetitions)."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # top row
+        _box(0.0, 100.0, 50.0, 130.0),  # bottom row, far enough apart in y
+    ]
+    out = aggregate_frame_bboxes(boxes, ["A", "A"], [0.9, 0.9], min_confidence=0.6)
+
+    assert len(out) == 2
+    assert out[0][0] == "A"
+    assert out[1][0] == "A"
+
+
+def test_same_text_adjacent_non_overlapping_joined() -> None:
+    """Adjacent same-text boxes that do not overlap are joined on one line."""
+    boxes = [
+        _box(0.0, 0.0, 50.0, 30.0),  # left
+        _box(55.0, 0.0, 105.0, 30.0),  # right, 5px gap (0.17x mean_h < 2.0)
+    ]
+    out = aggregate_frame_bboxes(boxes, ["A", "A"], [0.9, 0.9], min_confidence=0.6)
+
+    # Same line, gap below threshold → joined "A A"
+    assert len(out) == 1
+    assert out[0][0] == "A A"
