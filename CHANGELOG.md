@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Speech translation** — new `--translate/--no-translate` CLI flag (both `transcribe` and `transcribe-many`) and `OMNI_WHISPER_TASK` env var expose Whisper's native `task=translate`: speech from any supported source language is transcribed directly into English. On-screen text (OCR) intentionally stays in the source language, so translated runs emit `[SPEECH]` (English) + `[ON-SCREEN]` (source) without cross-language `[BOTH]` merges. Speech segment `language` fields report `en` under translate; the top-level transcript language remains the detected source language.
+
 ## [0.1.8] - 2026-07-13
 
 ### Fixed

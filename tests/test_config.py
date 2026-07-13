@@ -506,3 +506,35 @@ def test_model_knobs_env_round_trip_and_empty_string(
 
     assert cfg.ocr_det_model_type == "server"
     assert cfg.ocr_rec_ocr_version is None
+
+
+# ── Sprint 9.9: whisper_task ──────────────────────────────────────────────────
+
+
+def test_whisper_task_default_is_transcribe(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Default whisper_task is 'transcribe' (existing behavior unchanged)."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.whisper_task == "transcribe"
+
+
+def test_whisper_task_env_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMNI_WHISPER_TASK=translate round-trips to whisper_task='translate'."""
+    _strip_omni_env(monkeypatch)
+    monkeypatch.setenv("OMNI_WHISPER_TASK", "translate")
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.whisper_task == "translate"
+
+
+def test_whisper_task_invalid_rejects(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Invalid whisper_task values raise ValidationError (stock pydantic literal)."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        OmniScribeConfig(whisper_task="summarize")  # type: ignore[arg-type]

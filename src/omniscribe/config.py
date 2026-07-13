@@ -55,6 +55,7 @@ class OmniScribeConfig(BaseSettings):
     whisper_compute_type: str = "float16"
     whisper_batch_size: int = 16
     whisper_language: str | None = None
+    whisper_task: Literal["transcribe", "translate"] = "transcribe"
 
     # ── OCR ──────────────────────────────────────────────
     ocr_enabled: bool = True

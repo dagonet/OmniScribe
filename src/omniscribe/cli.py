@@ -237,6 +237,11 @@ def transcribe(
             "-o foo.txt without --format now writes TXT (previously JSON)."
         ),
     ),
+    translate: bool | None = typer.Option(
+        None,
+        "--translate/--no-translate",
+        help="Translate speech to English (Whisper task=translate). On-screen text (OCR) stays in the source language.",
+    ),
 ) -> None:
     """Download (if URL), extract audio, transcribe, and write the transcript.
 
@@ -259,6 +264,10 @@ def transcribe(
         config = config.model_copy(update={"llm_cleanup_enabled": llm_cleanup})
     if asr_cleanup is not None:
         config = config.model_copy(update={"llm_asr_cleanup_enabled": asr_cleanup})
+    if translate is not None:
+        config = config.model_copy(
+            update={"whisper_task": "translate" if translate else "transcribe"}
+        )
 
     resolved_format = _resolve_output_format(
         flag=output_format,
@@ -514,6 +523,11 @@ def transcribe_many(
             "overrides OMNI_LLM_ASR_CLEANUP_ENABLED."
         ),
     ),
+    translate: bool | None = typer.Option(
+        None,
+        "--translate/--no-translate",
+        help="Translate speech to English (Whisper task=translate). On-screen text (OCR) stays in the source language.",
+    ),
 ) -> None:
     """Process a list of URLs (or local files), one per line, with resume-on-failure.
 
@@ -532,6 +546,10 @@ def transcribe_many(
         config = config.model_copy(update={"llm_cleanup_enabled": llm_cleanup})
     if asr_cleanup is not None:
         config = config.model_copy(update={"llm_asr_cleanup_enabled": asr_cleanup})
+    if translate is not None:
+        config = config.model_copy(
+            update={"whisper_task": "translate" if translate else "transcribe"}
+        )
 
     ocr_active = ocr if ocr is not None else config.ocr_enabled
 
