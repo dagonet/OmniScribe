@@ -19,9 +19,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
-# Install dependencies (layer cached unless pyproject.toml/uv.lock/README.md changes)
+# Install dependencies (layer cached unless pyproject.toml/uv.lock/README.md changes).
+# --extra photo bundles gallery-dl so TikTok /photo/ posts work in-container.
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --extra photo
 
 # Pre-download Whisper model (~1.5 GB)
 RUN .venv/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('large-v3-turbo', device='cpu', compute_type='int8')"
@@ -31,7 +32,7 @@ RUN .venv/bin/python -c "from rapidocr import RapidOCR; RapidOCR(params={'Engine
 
 # Install application
 COPY src/ ./src/
-RUN uv sync --frozen --no-dev \
+RUN uv sync --frozen --no-dev --extra photo \
     && uv cache clean
 
 ENV PATH="/app/.venv/bin:$PATH"

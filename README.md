@@ -174,7 +174,10 @@ docker run --rm -e OMNI_WHISPER_DEVICE=cpu -e OMNI_OCR_DEVICE=cpu omniscribe tra
 ```
 
 The image bundles Whisper `large-v3-turbo` (~1.5 GB) and RapidOCR models (~15 MB)
-so transcription starts instantly — no model downloads at runtime.
+so transcription starts instantly — no model downloads at runtime. The `[photo]`
+extra (gallery-dl) is included, so TikTok `/photo/` posts work in-container.
+The `[llm]` extra is **not** bundled — LLM cleanup (`--llm-cleanup` / `--asr-cleanup`)
+targets a host-local Ollama server and is intended for non-container installs.
 GPU passthrough requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
 
 ## Requirements

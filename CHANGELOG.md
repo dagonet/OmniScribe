@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Docker image now bundles the `[photo]` extra** (gallery-dl): TikTok `/photo/` post URLs previously failed in-container because gallery-dl was not installed. Both `uv sync` layers in the Dockerfile now pass `--extra photo`. README Docker section documents the bundled extras (and that `[llm]` intentionally stays out — Ollama is host-external).
+
 ## [0.1.7] - 2026-07-13
 
 ### Added
