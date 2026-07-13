@@ -176,6 +176,16 @@ class RapidOCREngine:
                 "Rec.lang_type": lang,
                 "Det.lang_type": det_lang,
             }
+            # Sprint 9.4 — optional Det overrides (None = rapidocr config.yaml default).
+            # NOTE: rapidocr validates only "Global.*" param keys; a wrong "Det.*" key
+            # is silently absorbed by OmegaConf with no error — key strings below are
+            # verified against rapidocr's config.yaml and must not be renamed casually.
+            if self._config.ocr_det_limit_side_len is not None:
+                params["Det.limit_side_len"] = self._config.ocr_det_limit_side_len
+            if self._config.ocr_det_thresh is not None:
+                params["Det.thresh"] = self._config.ocr_det_thresh
+            if self._config.ocr_det_box_thresh is not None:
+                params["Det.box_thresh"] = self._config.ocr_det_box_thresh
             try:
                 self._engine = RapidOCR(params=params)
             except Exception as exc:

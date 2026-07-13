@@ -56,6 +56,12 @@ class OmniScribeConfig(BaseSettings):
     # so the guard protects exactly the pathological ≤9-frame zone (2-frame
     # photo slideshows) without touching typical 30+ frame videos.
     ocr_frequency_min_frame_count: int = Field(default=10, ge=0)
+    # Sprint 9.4 — RapidOCR Det knobs (None = use RapidOCR config.yaml default).
+    # Exposed for the #41 grid search on dense-small-text content; defaults
+    # deliberately None so behavior is unchanged until data justifies values.
+    ocr_det_limit_side_len: int | None = Field(default=None, ge=32)
+    ocr_det_thresh: float | None = Field(default=None, gt=0, lt=1)
+    ocr_det_box_thresh: float | None = Field(default=None, gt=0, lt=1)
 
     # ── LLM cleanup ──────────────────────────────────────
     # Opt-in per-segment OCR-artefact cleanup via a local Ollama model.
@@ -102,7 +108,13 @@ class OmniScribeConfig(BaseSettings):
     keep_temp_files: bool = False
     log_level: str = "INFO"
 
-    @field_validator("whisper_language", mode="before")
+    @field_validator(
+        "whisper_language",
+        "ocr_det_limit_side_len",
+        "ocr_det_thresh",
+        "ocr_det_box_thresh",
+        mode="before",
+    )
     @classmethod
     def _empty_to_none(cls, v: object) -> object:
         """Coerce empty-string env values to ``None`` for optional fields."""

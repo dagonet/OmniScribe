@@ -390,3 +390,52 @@ def test_llm_asr_cleanup_enabled_env_case_insensitive(
     cfg = OmniScribeConfig()
 
     assert cfg.llm_asr_cleanup_enabled is True
+
+
+# ── Sprint 9.4: RapidOCR Det knobs ──────────────────────────────────────────
+
+
+def test_det_knobs_default_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sprint 9.4 — all three det knobs default to None (zero behavior change unless env overrides)."""
+    _strip_omni_env(monkeypatch)
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.ocr_det_limit_side_len is None
+    assert cfg.ocr_det_thresh is None
+    assert cfg.ocr_det_box_thresh is None
+
+
+@pytest.mark.parametrize(
+    "bad_kwargs",
+    [
+        {"ocr_det_limit_side_len": 16},  # below ge=32
+        {"ocr_det_thresh": 1.5},  # outside (0, 1)
+        {"ocr_det_thresh": 0.0},  # gt=0 excludes 0
+        {"ocr_det_box_thresh": 0.0},  # gt=0 excludes 0
+    ],
+)
+def test_det_knobs_reject_out_of_bounds(
+    monkeypatch: pytest.MonkeyPatch, bad_kwargs: dict[str, object]
+) -> None:
+    """Out-of-range det knob values raise ValidationError at construction."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError):
+        OmniScribeConfig(**bad_kwargs)
+
+
+def test_det_knobs_env_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Int and float env values parse; empty-string coerces to None."""
+    _strip_omni_env(monkeypatch)
+    monkeypatch.setenv("OMNI_OCR_DET_LIMIT_SIDE_LEN", "1440")
+    monkeypatch.setenv("OMNI_OCR_DET_THRESH", "0.25")
+    monkeypatch.setenv("OMNI_OCR_DET_BOX_THRESH", "")
+
+    cfg = OmniScribeConfig()
+
+    assert cfg.ocr_det_limit_side_len == 1440
+    assert cfg.ocr_det_thresh == 0.25
+    assert cfg.ocr_det_box_thresh is None
