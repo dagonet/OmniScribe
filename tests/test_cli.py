@@ -1788,3 +1788,52 @@ def test_transcribe_many_translate_flag_sets_whisper_task(tmp_path: Path) -> Non
     assert result.exit_code == 0, result.output
     for call in mock_proc.call_args_list:
         assert call.args[1].whisper_task == "translate"
+
+
+# ── Sprint 9.10: serve command ─────────────────────────────────────────────
+
+
+def test_serve_import_error_raises_omniscribe_error(monkeypatch) -> None:
+    """Missing [api] extra raises OmniScribeError with a helpful message."""
+    import builtins
+    import sys
+
+    # Clear module cache so __import__ is called (not cached import).
+    for mod in ("uvicorn", "omniscribe.api.server"):
+        sys.modules.pop(mod, None)
+
+    orig_import = builtins.__import__
+
+    def _mock_import(name, *args, **kwargs):
+        if name == "uvicorn":
+            raise ImportError(f"No module named {name!r}")
+        return orig_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", _mock_import)
+
+    result = CliRunner().invoke(app, ["serve", "--host", "127.0.0.1", "--port", "8000"])
+
+    assert result.exception is not None
+    assert "requires the [api] extra" in str(result.exception)
+
+
+def test_serve_calls_uvicorn_run(monkeypatch) -> None:
+    """Happy path: serve calls uvicorn.run with the configured host/port."""
+    import uvicorn as uvicorn_mod
+
+    captured: list[dict] = []
+
+    def _fake_run(app, **kwargs):
+        captured.append({"app": app, **kwargs})
+
+    monkeypatch.setattr(uvicorn_mod, "run", _fake_run)
+
+    result = CliRunner().invoke(
+        app,
+        ["serve", "--host", "0.0.0.0", "--port", "9000"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert len(captured) == 1
+    assert captured[0]["host"] == "0.0.0.0"
+    assert captured[0]["port"] == 9000
