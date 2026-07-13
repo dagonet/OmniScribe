@@ -20,7 +20,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 — runtime use in file ops
 from typing import TYPE_CHECKING, Any, Protocol
 from uuid import uuid4
 
@@ -36,9 +36,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 class JobStatus(StrEnum):
