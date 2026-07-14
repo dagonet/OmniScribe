@@ -78,6 +78,7 @@ Dozens of tools transcribe the *spoken audio* of videos (ElevenLabs, Descript, T
 | **Video processing** | ffmpeg + OpenCV | Audio extraction, frame sampling, image preprocessing |
 | **Text dedup/merge** | Custom + optional LLM | Fuzzy matching (rapidfuzz), timestamp alignment, optional local LLM for cleanup |
 | **CLI framework** | [Typer](https://github.com/fastapi/typer) | Clean CLI with auto-generated help, type hints |
+| **HTTP API (optional)** | FastAPI + uvicorn (`[api]` extra) | Job-based server (`omniscribe serve`) wrapping the same pipeline |
 | **Config** | pydantic-settings | Typed configuration with env var support |
 | **Package management** | uv | Fast, modern Python package manager |
 
@@ -309,20 +310,25 @@ Merged output:
 | Phase 2 — OCR pipeline | Complete | `docs/plans/phase-2-5-scene-change.md` (Sprint 2.5, PR #3 — `894fae2`); Sprints 2.1–2.2 merged earlier |
 | Phase 3 — Platform profiles & UI filtering | Complete | Sprint 3.1 (`3d855cc`), Sprint 3.2 (`05bbe37`) |
 | Phase 4 — Merge engine | Complete | `docs/plans/phase-4-merge-engine.md`; Sprint 4.1 (PR #4, `5c81ced`) and Sprint 4.2 (PR #5, `b2a89d6`) merged |
-| Phase 5 — Polish & extensibility | Complete | Sprints 5.1 (PR #6, `530902f`, doc trust-repair), 5.2 (PR #7, `db3e4b1`, CI/CD), 5.3 (PR #8, `3605a19`, doc/code drift), 5.4 (PR #26, `bf4ef74`, batch processing) merged; LLM cleanup shipped via Sprints 6.1 (PR #12), 6.2 (PR #14), and `681fa03` robustness; **Docker** shipped v0.1.2 (PR #31) |
-| Phase 6 — Advanced features | Not started | — |
+| Phase 5 — Polish & extensibility | Complete | Sprints 5.1 (PR #6, `530902f`, doc trust-repair), 5.2 (PR #7, `db3e4b1`, CI/CD), 5.3 (PR #8, `3605a19`, doc/code drift), 5.4 (PR #26, `bf4ef74`, batch processing) merged; LLM cleanup shipped via Sprints 6.1 (PR #12), 6.2 (PR #14), and `681fa03` robustness; **Docker** shipped v0.1.2 |
+| Hardening & OCR-quality campaign (post-Phase-5) | Complete | Windows GPU without system CUDA (Sprints 7.2–7.4, v0.1.1); playlist/channel batch expansion (Sprint 8.1, v0.1.2); OCR language auto-resolution + caption-mask toggles (v0.1.3); eval-matching + aggregation fixes (Sprints 9.2–9.3, v0.1.4–v0.1.5); det/model diagnostic knobs (Sprints 9.4–9.5, v0.1.6); **photo-mode-native pipeline** + spatial dedup (Sprints 9.6–9.7, v0.1.7) — three-sample eval matrix at recall 1.0; Docker photo extra (v0.1.8) |
+| Phase 6 — Advanced features | In progress | **Speech translation** shipped v0.1.9 (Sprint 9.9, PR #53); **API mode** shipped v0.2.0 (Sprint 9.10, PR #55); playlist/channel support shipped earlier (Sprint 8.1, v0.1.2); remaining items open — see list below |
 
-### Phase 6 (Future): Advanced Features
+### Phase 6: Advanced Features
 
-Ideas for later, not in initial scope:
+Shipped:
 
-- **Web UI** — Simple Gradio or Streamlit interface
+- **Playlist/channel support** (shipped Sprint 8.1, v0.1.2) — Transcribe all videos from a creator or playlist via `transcribe-many` auto-expansion
+- **Speech translation** (shipped Sprint 9.9, v0.1.9) — `--translate` / `OMNI_WHISPER_TASK` use Whisper's native `task=translate` (any source language → English speech). General any-to-any transcript translation remains open (would ride the existing Ollama `[llm]` plumbing)
+- **API mode** (shipped Sprint 9.10, v0.2.0) — `omniscribe serve` FastAPI job server (`[api]` extra); v1 is local-only (no auth/persistence)
+
+Still open, not scheduled:
+
+- **Web UI** — Simple Gradio or Streamlit interface (an API-backed frontend now that `serve` exists)
 - **Speaker diarization** — WhisperX integration for multi-speaker videos
-- **Translation** — Transcript translation to other languages
-- **Content analysis** — Sentiment, topic extraction, hashtag correlation
-- **API mode** — FastAPI server for integration with other tools
-- **Browser extension** — Transcribe while browsing TikTok/YouTube/Instagram
-- **Playlist/channel support** (shipped Sprint 8.1, v0.1.2) — Transcribe all videos from a creator or playlist
+- **Content analysis** — Sentiment, topic extraction, hashtag correlation (candidate for the existing Ollama `[llm]` plumbing)
+- **Browser extension** — Transcribe while browsing TikTok/YouTube/Instagram (requires API mode — now available)
+- **Twitter/X + Facebook platform profiles** — UI-filter profiles for additional platforms (tracked in README "Supported Platforms"; pipeline is already platform-agnostic)
 
 ## Configuration Model
 
@@ -348,7 +354,14 @@ omniscribe transcribe <url> \
   --platform tiktok \           # override platform auto-detect
   --ocr / --no-ocr \            # toggle OCR channel
   --ui-filter / --no-ui-filter \  # toggle zone/pattern/frequency chrome filters
-  --scene-change / --no-scene-change   # toggle OCR frame-sampler scene-change mode
+  --scene-change / --no-scene-change \  # toggle OCR frame-sampler scene-change mode
+  --translate                   # speech → English (Whisper task=translate); OCR stays source-language
+
+# Batch — one URL / path / playlist per line, resume-on-failure
+omniscribe transcribe-many urls.txt --output-dir transcripts/ --format md
+
+# HTTP API server (requires the [api] extra)
+omniscribe serve --host 127.0.0.1 --port 8000
 ```
 
 ## Key Technical Decisions
@@ -436,8 +449,13 @@ MIT — open source, free to use and modify.
 
 ## Open Questions
 
-- [ ] Should the OCR module support a "vision LLM" backend (e.g. Qwen2.5-VL, Llama 3.2 Vision) as an alternative to PaddleOCR for higher accuracy on stylized text?
-- [ ] Caching strategy for models — pre-download on install vs. lazy download on first use?
-- [ ] Should the merge engine output a "confidence score" per segment to flag uncertain results?
-- [ ] Platform profile format — Python classes vs. YAML config files?
+Still open:
+
+- [ ] Should the OCR module support a "vision LLM" backend (e.g. Qwen2.5-VL, Llama 3.2 Vision) as an alternative to RapidOCR for higher accuracy on stylized text?
 - [ ] For long YouTube videos: should there be a "chapters" mode that segments the transcript by detected chapters?
+- [ ] Should the merge engine surface a unified per-segment confidence/uncertainty flag? (Segments already carry raw confidences — ASR `avg_logprob`, OCR detection confidence — but nothing interprets them.)
+
+Resolved:
+
+- [x] Caching strategy for models — **lazy download on first use** locally (faster-whisper/RapidOCR default); the Docker image pre-downloads both at build time (v0.1.2).
+- [x] Platform profile format — **Python classes** (`src/omniscribe/platforms/`); settled since Phase 3, no YAML need has appeared.
