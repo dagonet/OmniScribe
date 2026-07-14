@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel
 from rapidfuzz import fuzz
 
+from omniscribe.errors import OmniScribeError
+
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -155,6 +158,26 @@ def write_markdown(transcript: Transcript, path: Path) -> None:
     if body:
         body += "\n"
     path.write_text(body, encoding="utf-8")
+
+
+def write_transcript(transcript: Transcript, path: Path, fmt: str) -> None:
+    """Dispatch ``transcript`` to the appropriate format writer by ``fmt``.
+
+    Supported format values:
+    ``"json"``, ``"txt"``, ``"srt"``, ``"md"`` (Markdown).
+
+    Unknown ``fmt`` raises :class:`OmniScribeError`.
+    """
+    _writer_registry: dict[str, Callable[[Transcript, Path], None]] = {
+        "json": write_json,
+        "txt": write_txt,
+        "srt": write_srt,
+        "md": write_markdown,
+    }
+    writer = _writer_registry.get(fmt)
+    if writer is None:
+        raise OmniScribeError(f"Unknown output format: {fmt!r}")
+    writer(transcript, path)
 
 
 def _overlaps(speech: TranscriptSegment, ocr: TranscriptSegment) -> bool:
