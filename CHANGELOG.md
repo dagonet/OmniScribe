@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Eval samples manifest + fetch script** — `tests/fixtures/eval/README.md` documents three eval samples (two TikTok PHOTO posts, one TikTok VIDEO) with source URLs, fixture paths, ground-truth schema, and known-good baselines. `scripts/fetch_eval_samples.py` automates the download (gallery-dl for PHOTO, yt-dlp for VIDEO); idempotent, skips existing files.
+- **Opt-in `eval` integration suite** — `tests/test_eval_integration.py` runs the full OCR pipeline against local fixtures and asserts recall >= 1.0 baseline. Gated behind the `eval` pytest marker (excluded from default runs; invoke with `uv run pytest -m eval`). The `pyproject.toml` `addopts` excludes both `integration` and `eval` markers from CI.
+- **Unit tests for fetch script** — `tests/test_fetch_eval_samples.py` (5 tests): already-downloaded skip, `--sample` filter, photo-download dir creation, video-download dir creation.
+
 ## [0.2.3] - 2026-07-14
 
 ### Added
@@ -205,6 +211,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.2.4]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.4
 [0.2.3]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.3
 [0.2.2]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.2
 [0.2.1]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.1
