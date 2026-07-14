@@ -5,13 +5,64 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import click
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from omniscribe import __version__
 from omniscribe.cli import app
 from omniscribe.errors import OmniScribeError
 from omniscribe.output import Transcript, TranscriptSegment
+
+# ── Sprint 9.11: shared CLI option parity (issue #52) ────────────────────────
+# These nine options are declared by both ``transcribe`` and ``transcribe-many``;
+# the parity test below fails if one command diverges from the other.
+_COMMON_CLI_OPTIONS = {
+    "language",
+    "ocr",
+    "ocr_language",
+    "platform",
+    "ui_filter",
+    "scene_change",
+    "llm_cleanup",
+    "asr_cleanup",
+    "translate",
+}
+
+
+def test_cli_option_parity_between_transcribe_and_transcribe_many() -> None:
+    """Guards issue #52: every common option must be identical on both commands.
+
+    Compares typer's registered click parameters: flag names, secondary opts,
+    and help text. A dev adding an option to only one command will trip this.
+    """
+    click_cmd = typer.main.get_command(app)
+    t_cmd = click_cmd.get_command(None, "transcribe")
+    tm_cmd = click_cmd.get_command(None, "transcribe-many")
+    assert t_cmd is not None
+    assert tm_cmd is not None
+
+    t_opts: dict[str, click.Option] = {
+        p.name: p
+        for p in t_cmd.params
+        if isinstance(p, click.Option) and p.name in _COMMON_CLI_OPTIONS  # type: ignore[type-var]
+    }
+    tm_opts: dict[str, click.Option] = {
+        p.name: p
+        for p in tm_cmd.params
+        if isinstance(p, click.Option) and p.name in _COMMON_CLI_OPTIONS  # type: ignore[type-var]
+    }
+
+    for name in sorted(_COMMON_CLI_OPTIONS):
+        assert name in t_opts, f"transcribe missing common option {name!r}"
+        assert name in tm_opts, f"transcribe-many missing common option {name!r}"
+        t, tm = t_opts[name], tm_opts[name]
+        assert t.opts == tm.opts, f"{name}: opts differ ({t.opts} vs {tm.opts})"
+        assert t.secondary_opts == tm.secondary_opts, (
+            f"{name}: secondary_opts differ ({t.secondary_opts} vs {tm.secondary_opts})"
+        )
+        assert t.help == tm.help, f"{name}: help text differs"
 
 
 def _ocr_seg(start: float, text: str) -> TranscriptSegment:
@@ -1791,6 +1842,94 @@ def test_transcribe_many_translate_flag_sets_whisper_task(tmp_path: Path) -> Non
 
 
 # ── Sprint 9.10: serve command ─────────────────────────────────────────────
+
+
+def test_transcribe_many_ocr_language_flag(tmp_path: Path) -> None:
+    """``--ocr-language de`` on ``transcribe-many`` sets ocr_language on each item."""
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text("https://example.com/1\nhttps://example.com/2\n", encoding="utf-8")
+    out_dir = tmp_path / "out"
+    with (
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch(
+            "omniscribe.cli.compute_output_path",
+            side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
+        ),
+    ):
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe-many",
+                str(urls_file),
+                "--output-dir",
+                str(out_dir),
+                "--format",
+                "md",
+                "--ocr-language",
+                "de",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    for call in mock_proc.call_args_list:
+        assert call.args[1].ocr_language == "de"
+
+
+def test_transcribe_many_ui_filter_flag(tmp_path: Path) -> None:
+    """``--no-ui-filter`` on ``transcribe-many`` sets ui_filter_enabled False."""
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text("https://example.com/1\n", encoding="utf-8")
+    out_dir = tmp_path / "out"
+    with (
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch(
+            "omniscribe.cli.compute_output_path",
+            side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
+        ),
+    ):
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe-many",
+                str(urls_file),
+                "--output-dir",
+                str(out_dir),
+                "--format",
+                "md",
+                "--no-ui-filter",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    for call in mock_proc.call_args_list:
+        assert call.args[1].ui_filter_enabled is False
+
+
+def test_transcribe_many_scene_change_flag(tmp_path: Path) -> None:
+    """``--no-scene-change`` on ``transcribe-many`` sets scene_change_enabled False."""
+    urls_file = tmp_path / "urls.txt"
+    urls_file.write_text("https://example.com/1\n", encoding="utf-8")
+    out_dir = tmp_path / "out"
+    with (
+        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch(
+            "omniscribe.cli.compute_output_path",
+            side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
+        ),
+    ):
+        result = CliRunner().invoke(
+            app,
+            [
+                "transcribe-many",
+                str(urls_file),
+                "--output-dir",
+                str(out_dir),
+                "--format",
+                "md",
+                "--no-scene-change",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    for call in mock_proc.call_args_list:
+        assert call.args[1].scene_change_enabled is False
 
 
 def test_serve_import_error_raises_omniscribe_error(monkeypatch) -> None:

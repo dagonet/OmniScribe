@@ -8,7 +8,7 @@ import shutil
 from contextlib import contextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 
 import click
 import typer
@@ -68,6 +68,72 @@ _EXTENSION_TO_FORMAT: dict[str, str] = {
 # not a selectable profile. Config-level validator still accepts it so env-var
 # round-trips don't break.
 _PLATFORM_CHOICES = sorted(({"auto"} | {p.value for p in Platform}) - {"unknown"})
+
+# ── Shared per-run option definitions (issue #52) ────────────────────────
+# Single source of truth for options common to ``transcribe`` and
+# ``transcribe-many``. Declaring an option here and adding it to both command
+# signatures keeps flag names/help in lockstep; ``test_cli_option_parity``
+# fails if a common option is declared in one command but not the other.
+_LanguageOpt = Annotated[
+    str | None,
+    typer.Option("--language", help="Force source language (e.g. 'en'); auto-detect when omitted."),
+]
+_OcrOpt = Annotated[
+    bool | None,
+    typer.Option(
+        "--ocr/--no-ocr", help="Enable or disable on-screen-text OCR (overrides OMNI_OCR_ENABLED)."
+    ),
+]
+_OcrLanguageOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--ocr-language",
+        help="RapidOCR LangRec value (e.g. 'en', 'ch', 'japan'); overrides OMNI_OCR_LANGUAGE.",
+    ),
+]
+_PlatformOpt = Annotated[
+    str | None,
+    typer.Option(
+        "--platform",
+        click_type=click.Choice(_PLATFORM_CHOICES),
+        help="Override OMNI_PLATFORM_PROFILE for this run.",
+    ),
+]
+_UiFilterOpt = Annotated[
+    bool | None,
+    typer.Option(
+        "--ui-filter/--no-ui-filter",
+        help="Enable or disable UI filtering (zone masking + pattern + frequency); overrides OMNI_UI_FILTER_ENABLED.",
+    ),
+]
+_SceneChangeOpt = Annotated[
+    bool | None,
+    typer.Option(
+        "--scene-change/--no-scene-change",
+        help="Enable or disable scene-change detection in the OCR frame sampler; overrides OMNI_SCENE_CHANGE_ENABLED.",
+    ),
+]
+_LlmCleanupOpt = Annotated[
+    bool | None,
+    typer.Option(
+        "--llm-cleanup/--no-llm-cleanup",
+        help="Enable Ollama-backed OCR-artefact cleanup on [ON-SCREEN] and [BOTH] segments; overrides OMNI_LLM_CLEANUP_ENABLED. Requires: uv sync --extra llm.",
+    ),
+]
+_AsrCleanupOpt = Annotated[
+    bool | None,
+    typer.Option(
+        "--asr-cleanup/--no-asr-cleanup",
+        help="Enable Ollama-backed punctuation + capitalization cleanup on [SPEECH] segments; overrides OMNI_LLM_ASR_CLEANUP_ENABLED. Requires: uv sync --extra llm.",
+    ),
+]
+_TranslateOpt = Annotated[
+    bool | None,
+    typer.Option(
+        "--translate/--no-translate",
+        help="Translate speech to English (Whisper task=translate). On-screen text (OCR) stays in the source language.",
+    ),
+]
 
 app = typer.Typer(
     name="omniscribe",
@@ -145,6 +211,43 @@ def _resolve_output_format(
     return "json"
 
 
+def _apply_cli_overrides(
+    config: OmniScribeConfig,
+    *,
+    language: str | None,
+    ocr_language: str | None,
+    platform: str | None,
+    ui_filter: bool | None,
+    scene_change: bool | None,
+    llm_cleanup: bool | None,
+    asr_cleanup: bool | None,
+    translate: bool | None,
+) -> OmniScribeConfig:
+    """Fold non-None per-run CLI overrides into a copied config.
+
+    ``--ocr`` is deliberately absent: it maps to the ``ocr_active`` pipeline
+    parameter, not a config field (both callers keep that line inline).
+    """
+    updates: dict[str, object] = {}
+    if language is not None:
+        updates["whisper_language"] = language
+    if ocr_language is not None:
+        updates["ocr_language"] = ocr_language
+    if platform is not None:
+        updates["platform_profile"] = platform
+    if ui_filter is not None:
+        updates["ui_filter_enabled"] = ui_filter
+    if scene_change is not None:
+        updates["scene_change_enabled"] = scene_change
+    if llm_cleanup is not None:
+        updates["llm_cleanup_enabled"] = llm_cleanup
+    if asr_cleanup is not None:
+        updates["llm_asr_cleanup_enabled"] = asr_cleanup
+    if translate is not None:
+        updates["whisper_task"] = "translate" if translate else "transcribe"
+    return config.model_copy(update=updates) if updates else config
+
+
 @app.callback()
 def main(
     ctx: typer.Context,
@@ -173,59 +276,14 @@ def transcribe(
         "-o",
         help="Destination path. Extension infers format when --format and OMNI_OUTPUT_FORMAT are both unset.",
     ),
-    language: str | None = typer.Option(
-        None,
-        "--language",
-        help="Force source language (e.g. 'en'); auto-detect when omitted.",
-    ),
-    ocr: bool | None = typer.Option(
-        None,
-        "--ocr/--no-ocr",
-        help="Enable or disable on-screen-text OCR (overrides OMNI_OCR_ENABLED).",
-    ),
-    ocr_language: str | None = typer.Option(
-        None,
-        "--ocr-language",
-        help="RapidOCR LangRec value (e.g. 'en', 'ch', 'japan'); overrides OMNI_OCR_LANGUAGE.",
-    ),
-    platform: str | None = typer.Option(
-        None,
-        "--platform",
-        click_type=click.Choice(_PLATFORM_CHOICES),
-        help="Override OMNI_PLATFORM_PROFILE for this run.",
-    ),
-    ui_filter: bool | None = typer.Option(
-        None,
-        "--ui-filter/--no-ui-filter",
-        help=(
-            "Enable or disable UI filtering (zone masking + pattern + frequency); "
-            "overrides OMNI_UI_FILTER_ENABLED."
-        ),
-    ),
-    scene_change: bool | None = typer.Option(
-        None,
-        "--scene-change/--no-scene-change",
-        help=(
-            "Enable or disable scene-change detection in the OCR frame sampler; "
-            "overrides OMNI_SCENE_CHANGE_ENABLED."
-        ),
-    ),
-    llm_cleanup: bool | None = typer.Option(
-        None,
-        "--llm-cleanup/--no-llm-cleanup",
-        help=(
-            "Enable Ollama-backed OCR-artefact cleanup on [ON-SCREEN] and [BOTH] "
-            "segments; overrides OMNI_LLM_CLEANUP_ENABLED. Requires: uv sync --extra llm."
-        ),
-    ),
-    asr_cleanup: bool | None = typer.Option(
-        None,
-        "--asr-cleanup/--no-asr-cleanup",
-        help=(
-            "Enable Ollama-backed punctuation + capitalization cleanup on [SPEECH] "
-            "segments; overrides OMNI_LLM_ASR_CLEANUP_ENABLED. Requires: uv sync --extra llm."
-        ),
-    ),
+    language: _LanguageOpt = None,
+    ocr: _OcrOpt = None,
+    ocr_language: _OcrLanguageOpt = None,
+    platform: _PlatformOpt = None,
+    ui_filter: _UiFilterOpt = None,
+    scene_change: _SceneChangeOpt = None,
+    llm_cleanup: _LlmCleanupOpt = None,
+    asr_cleanup: _AsrCleanupOpt = None,
     output_format: str | None = typer.Option(
         None,
         "--format",
@@ -237,11 +295,7 @@ def transcribe(
             "-o foo.txt without --format now writes TXT (previously JSON)."
         ),
     ),
-    translate: bool | None = typer.Option(
-        None,
-        "--translate/--no-translate",
-        help="Translate speech to English (Whisper task=translate). On-screen text (OCR) stays in the source language.",
-    ),
+    translate: _TranslateOpt = None,
 ) -> None:
     """Download (if URL), extract audio, transcribe, and write the transcript.
 
@@ -250,24 +304,17 @@ def transcribe(
     (``.json`` / ``.txt`` / ``.srt`` / ``.md``), then the default ``"json"``.
     """
     config: OmniScribeConfig = ctx.obj["config"]
-    if language is not None:
-        config = config.model_copy(update={"whisper_language": language})
-    if ocr_language is not None:
-        config = config.model_copy(update={"ocr_language": ocr_language})
-    if platform is not None:
-        config = config.model_copy(update={"platform_profile": platform})
-    if ui_filter is not None:
-        config = config.model_copy(update={"ui_filter_enabled": ui_filter})
-    if scene_change is not None:
-        config = config.model_copy(update={"scene_change_enabled": scene_change})
-    if llm_cleanup is not None:
-        config = config.model_copy(update={"llm_cleanup_enabled": llm_cleanup})
-    if asr_cleanup is not None:
-        config = config.model_copy(update={"llm_asr_cleanup_enabled": asr_cleanup})
-    if translate is not None:
-        config = config.model_copy(
-            update={"whisper_task": "translate" if translate else "transcribe"}
-        )
+    config = _apply_cli_overrides(
+        config,
+        language=language,
+        ocr_language=ocr_language,
+        platform=platform,
+        ui_filter=ui_filter,
+        scene_change=scene_change,
+        llm_cleanup=llm_cleanup,
+        asr_cleanup=asr_cleanup,
+        translate=translate,
+    )
 
     resolved_format = _resolve_output_format(
         flag=output_format,
@@ -494,40 +541,15 @@ def transcribe_many(
         click_type=click.Choice(_OUTPUT_FORMAT_CHOICES),
         help="Output format applied to every item in the batch.",
     ),
-    language: str | None = typer.Option(
-        None,
-        "--language",
-        help="Force source language (e.g. 'en'); auto-detect when omitted.",
-    ),
-    ocr: bool | None = typer.Option(
-        None,
-        "--ocr/--no-ocr",
-        help="Enable or disable on-screen-text OCR (overrides OMNI_OCR_ENABLED).",
-    ),
-    platform: str | None = typer.Option(
-        None,
-        "--platform",
-        click_type=click.Choice(_PLATFORM_CHOICES),
-        help="Override OMNI_PLATFORM_PROFILE for this run.",
-    ),
-    llm_cleanup: bool | None = typer.Option(
-        None,
-        "--llm-cleanup/--no-llm-cleanup",
-        help="Enable Ollama-backed OCR-artefact cleanup; overrides OMNI_LLM_CLEANUP_ENABLED.",
-    ),
-    asr_cleanup: bool | None = typer.Option(
-        None,
-        "--asr-cleanup/--no-asr-cleanup",
-        help=(
-            "Enable Ollama-backed punctuation/capitalization cleanup on speech segments; "
-            "overrides OMNI_LLM_ASR_CLEANUP_ENABLED."
-        ),
-    ),
-    translate: bool | None = typer.Option(
-        None,
-        "--translate/--no-translate",
-        help="Translate speech to English (Whisper task=translate). On-screen text (OCR) stays in the source language.",
-    ),
+    language: _LanguageOpt = None,
+    ocr: _OcrOpt = None,
+    ocr_language: _OcrLanguageOpt = None,
+    platform: _PlatformOpt = None,
+    ui_filter: _UiFilterOpt = None,
+    scene_change: _SceneChangeOpt = None,
+    llm_cleanup: _LlmCleanupOpt = None,
+    asr_cleanup: _AsrCleanupOpt = None,
+    translate: _TranslateOpt = None,
 ) -> None:
     """Process a list of URLs (or local files), one per line, with resume-on-failure.
 
@@ -538,18 +560,17 @@ def transcribe_many(
     ``pending`` and ``failed`` items are re-attempted).
     """
     config: OmniScribeConfig = ctx.obj["config"]
-    if language is not None:
-        config = config.model_copy(update={"whisper_language": language})
-    if platform is not None:
-        config = config.model_copy(update={"platform_profile": platform})
-    if llm_cleanup is not None:
-        config = config.model_copy(update={"llm_cleanup_enabled": llm_cleanup})
-    if asr_cleanup is not None:
-        config = config.model_copy(update={"llm_asr_cleanup_enabled": asr_cleanup})
-    if translate is not None:
-        config = config.model_copy(
-            update={"whisper_task": "translate" if translate else "transcribe"}
-        )
+    config = _apply_cli_overrides(
+        config,
+        language=language,
+        ocr_language=ocr_language,
+        platform=platform,
+        ui_filter=ui_filter,
+        scene_change=scene_change,
+        llm_cleanup=llm_cleanup,
+        asr_cleanup=asr_cleanup,
+        translate=translate,
+    )
 
     ocr_active = ocr if ocr is not None else config.ocr_enabled
 
