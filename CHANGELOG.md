@@ -7,9 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-07-14
+
+### Added
+
+- **`OcrEngine` protocol** (`omniscribe.ocr.protocol`) — structural `typing.Protocol` describing the OCR backend surface (`extract`, `extract_images`, `last_frame_count`); the extension seam for alternative backends (e.g. the roadmap vision-LLM engine). `RapidOCREngine` conforms.
+- **`output.write_transcript(transcript, path, fmt)`** — registry-based output-format dispatcher replacing the CLI-side `match/case`; unknown formats raise `OmniScribeError`.
+- **Documentation**: `docs/architecture.md` (module map, pipeline flow, layering rules, extension seams), `docs/configuration.md` (full `OMNI_*` reference with defaults, precedence, validators), `docs/adding-platforms.md` (new-platform guide) — promised by IMPLEMENTATION_PLAN.md's tree since Phase 1, now real. The project-structure tree is synced to reality.
+
 ### Changed
 
-- **Internal: pipeline orchestration extracted** from `cli.py` into new `omniscribe.pipeline` module. API server imports from `pipeline` directly, breaking the layering violation where `api/server.py` depended on the CLI module. Test patch seams and CLI call sites now target `omniscribe.pipeline` directly (no re-export shim).
+- **Internal: pipeline orchestration extracted** from `cli.py` into new `omniscribe.pipeline` module. API server imports from `pipeline` directly, breaking the layering violation where `api/server.py` depended on the CLI module. Test patch seams and CLI call sites now target `omniscribe.pipeline` directly (no re-export shim). `omniscribe.pipeline.process_single_video` is the supported programmatic entry point (optional `console` parameter controls rich output; the API passes none).
 
 ## [0.2.1] - 2026-07-14
 
@@ -186,6 +194,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.2.2]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.2
 [0.2.1]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.1
 [0.2.0]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.0
 [0.1.9]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.9
