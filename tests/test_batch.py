@@ -8,6 +8,7 @@ group.
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +19,7 @@ import pytest
 from omniscribe.batch import (
     BatchItem,
     BatchState,
+    _video_id_from_url,
     compute_output_path,
     load_state,
     parse_url_list,
@@ -228,6 +230,92 @@ def test_save_state_uses_same_volume_tempfile(tmp_path: Path, monkeypatch) -> No
     save_state(BatchState(items=[BatchItem(source="x")]), sf)
 
     assert captured["dir"] == str(sf.parent)
+
+
+# ── version / shape error paths in load_state ──────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "version_value",
+    [
+        "abc",  # ValueError from int("abc")
+        [1, 2],  # TypeError from int([1, 2])
+    ],
+)
+def test_state_load_non_integer_version_returns_none(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, version_value: object
+) -> None:
+    """version field that int() rejects -> None + WARNING."""
+    sf = tmp_path / "state.json"
+    sf.write_text(json.dumps({"version": version_value, "items": []}), encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="omniscribe.batch"):
+        assert load_state(sf) is None
+    assert any("non-integer version" in r.message for r in caplog.records)
+
+
+def test_state_load_shape_error_returns_none(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Valid version but _state_from_jsonable raises (missing 'source') -> None."""
+    sf = tmp_path / "state.json"
+    data = {
+        "version": 1,
+        "started_at": "2026-01-01T00:00:00+00:00",
+        "input_file": "x",
+        "output_dir": "x",
+        "items": [{"status": "pending"}],  # missing "source" -> KeyError
+    }
+    sf.write_text(json.dumps(data), encoding="utf-8")
+    with caplog.at_level(logging.WARNING, logger="omniscribe.batch"):
+        assert load_state(sf) is None
+    assert any("unexpected shape" in r.message for r in caplog.records)
+
+
+# ── _video_id_from_url ────────────────────────────────────────────────────
+
+
+def test_video_id_from_url_success() -> None:
+    """yt-dlp extracts a valid video ID -> returns it."""
+    mock_info = {"id": "abc123"}
+    with patch("yt_dlp.YoutubeDL") as mock_ydl:
+        mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_info
+        result = _video_id_from_url("https://example.com/v/abc")
+    assert result == "abc123"
+
+
+def test_video_id_from_url_info_none() -> None:
+    """extract_info returns None -> returns None."""
+    with patch("yt_dlp.YoutubeDL") as mock_ydl:
+        mock_ydl.return_value.__enter__.return_value.extract_info.return_value = None
+        result = _video_id_from_url("https://example.com/v/abc")
+    assert result is None
+
+
+def test_video_id_from_url_empty_id_returns_none() -> None:
+    """info has empty string id -> returns None."""
+    mock_info = {"id": ""}
+    with patch("yt_dlp.YoutubeDL") as mock_ydl:
+        mock_ydl.return_value.__enter__.return_value.extract_info.return_value = mock_info
+        result = _video_id_from_url("https://example.com/v/abc")
+    assert result is None
+
+
+def test_video_id_from_url_download_error_returns_none() -> None:
+    """DownloadError during extraction -> returns None."""
+    from yt_dlp.utils import DownloadError
+
+    with patch("yt_dlp.YoutubeDL") as mock_ydl:
+        mock_ydl.return_value.__enter__.return_value.extract_info.side_effect = DownloadError("err")
+        result = _video_id_from_url("https://example.com/v/abc")
+    assert result is None
+
+
+def test_video_id_from_url_generic_exception_returns_none() -> None:
+    """Non-DownloadError exception -> returns None (logged at DEBUG)."""
+    with patch("yt_dlp.YoutubeDL") as mock_ydl:
+        mock_ydl.return_value.__enter__.return_value.extract_info.side_effect = ValueError("bad")
+        result = _video_id_from_url("https://example.com/v/abc")
+    assert result is None
 
 
 # ── reconcile ─────────────────────────────────────────────────────────────

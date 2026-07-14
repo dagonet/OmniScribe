@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Coverage gate enforced in CI at 95%** — `ci.yml` now runs `pytest --cov=omniscribe --cov-report=term-missing --cov-fail-under=95`. The explicit `--cov-fail-under` flag guarantees enforcement even if `pyproject.toml`'s `[tool.coverage.report] fail_under` is not honoured by pytest-cov.
+- **Error-path tests** for `audio.py` (ffprobe missing / non-zero exit / empty output / CalledProcessError without stderr), `acquire/photo.py` (`_run_gallery_dl` module + binary fallback paths), `batch.py` (state parse errors, video-ID extraction), and `merge/llm_cleanup.py` (Ollama response-shape guard branches).
+
+### Fixed
+
+- **pytest temp-dir artifact** — `pytest-of-*/` added to `.gitignore` so the temporary factory directory (which was landing in the repo root on this machine) no longer risks accidental tracking.
+
 ## [0.2.2] - 2026-07-14
 
 ### Added

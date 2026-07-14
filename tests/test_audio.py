@@ -103,3 +103,61 @@ def test_get_duration_failure_returns_none(tmp_path: Path) -> None:
         result = get_duration(audio)
 
     assert result is None
+
+
+def test_get_duration_ffprobe_missing_returns_none(tmp_path: Path) -> None:
+    """ffprobe absent from PATH -> log warning + return None."""
+    audio = tmp_path / "track.mp3"
+    audio.write_bytes(b"fake")
+
+    with patch("omniscribe.audio.shutil.which", return_value=None):
+        from omniscribe.audio import get_duration
+
+        result = get_duration(audio)
+
+    assert result is None
+
+
+def test_get_duration_nonzero_exit_returns_none(tmp_path: Path) -> None:
+    """ffprobe runs but exits non-zero -> log warning + return None."""
+    audio = tmp_path / "track.mp3"
+    audio.write_bytes(b"fake")
+    mock_proc = subprocess.CompletedProcess(args=[], returncode=1, stdout=b"", stderr=b"")
+
+    with (
+        patch("omniscribe.audio.subprocess.run", return_value=mock_proc),
+        patch("omniscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
+    ):
+        from omniscribe.audio import get_duration
+
+        result = get_duration(audio)
+
+    assert result is None
+
+
+def test_get_duration_empty_output_returns_none(tmp_path: Path) -> None:
+    """ffprobe returns 0 but stdout is empty -> log warning + return None."""
+    audio = tmp_path / "track.mp3"
+    audio.write_bytes(b"fake")
+    mock_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
+
+    with (
+        patch("omniscribe.audio.subprocess.run", return_value=mock_proc),
+        patch("omniscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
+    ):
+        from omniscribe.audio import get_duration
+
+        result = get_duration(audio)
+
+    assert result is None
+
+
+def test_extract_audio_called_process_error_no_stderr(tmp_path: Path) -> None:
+    """CalledProcessError with empty stderr -> detail uses exit status."""
+    err = subprocess.CalledProcessError(returncode=1, cmd=["ffmpeg"], stderr=b"")
+    with (
+        patch("omniscribe.audio._FFMPEG", "/usr/bin/ffmpeg"),
+        patch("omniscribe.audio.subprocess.run", side_effect=err),
+        pytest.raises(OmniScribeError, match="exit status 1 with no stderr output"),
+    ):
+        extract_audio(tmp_path / "a.mp4", tmp_path / "b.wav")

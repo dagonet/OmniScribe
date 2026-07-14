@@ -162,3 +162,10 @@ markers = [
     "gpu: marks tests that require a GPU",
     "integration: requires a live local Ollama server; skipped in CI",
 ]
+
+# ── Coverage ──────────────────────────────────────────
+[tool.coverage.run]
+source = ["omniscribe"]
+
+[tool.coverage.report]
+fail_under = 95

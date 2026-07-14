@@ -311,7 +311,9 @@ def compute_output_path(
         candidate = output_dir / f"{stem}({n}){ext}"
         if _normalize_for_compare(candidate) not in taken_keys:
             return candidate
-    raise AssertionError(f"More than 999 collisions for stem {stem!r} in {output_dir}; aborting.")
+    raise AssertionError(
+        f"More than 999 collisions for stem {stem!r} in {output_dir}; aborting."
+    )  # pragma: no cover — genuinely unreachable (999 ways to disambiguate)
 
 
 # ── Reconcile loaded state vs. fresh URL list ─────────────────────────────
