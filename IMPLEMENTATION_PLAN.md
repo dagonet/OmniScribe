@@ -94,59 +94,72 @@ Dozens of tools transcribe the *spoken audio* of videos (ElevenLabs, Descript, T
 
 ```
 omniscribe/
-├── pyproject.toml              # Project config (uv/pip)
+├── pyproject.toml              # Project config (uv), extras: [photo] [llm] [api] [dev]
 ├── README.md
 ├── LICENSE                     # MIT
 ├── IMPLEMENTATION_PLAN.md      # This file
 ├── .env.example                # Example config
+├── Dockerfile                  # CUDA runtime image (models pre-downloaded, [photo] bundled)
 │
 ├── src/
 │   └── omniscribe/
-│       ├── __init__.py
-│       ├── cli.py              # Typer CLI entry point (transcribe command + --format dispatch)
-│       ├── config.py           # pydantic-settings config
-│       ├── audio.py            # ffmpeg audio-extraction wrapper
-│       ├── errors.py           # OmniScribeError (single user-facing error type)
-│       ├── output.py           # Transcript/TranscriptSegment + merge_channels + write_json/txt/srt/markdown
+│       ├── __init__.py         # __version__
+│       ├── cli.py              # Typer CLI (transcribe / transcribe-many / serve) + shared option aliases
+│       ├── pipeline.py         # process_single_video orchestration + output-format resolution (programmatic entry point)
+│       ├── config.py           # pydantic-settings config (OMNI_* env vars)
+│       ├── audio.py            # ffmpeg audio extraction + ffprobe duration
+│       ├── batch.py            # transcribe-many state/resume + URL-list expansion helpers
+│       ├── errors.py           # OmniScribeError (intended future hierarchy documented in docstring)
+│       ├── output.py           # Transcript models + merge_channels + writers + write_transcript registry
 │       │
 │       ├── acquire/
-│       │   ├── __init__.py
 │       │   ├── downloader.py   # yt-dlp wrapper
-│       │   └── platform.py     # Platform enum + URL-based detection
+│       │   ├── photo.py        # TikTok photo-post acquisition (gallery-dl subprocess)
+│       │   ├── platform.py     # Platform enum + URL-based detection
+│       │   └── playlist.py     # Playlist/channel auto-expansion (extract_flat)
+│       │
+│       ├── api/
+│       │   └── server.py       # FastAPI job server (omniscribe serve, [api] extra)
 │       │
 │       ├── asr/
-│       │   ├── __init__.py
-│       │   └── whisper.py      # faster-whisper transcription
+│       │   └── whisper.py      # faster-whisper transcription (+ Windows CUDA DLL shim)
+│       │
+│       ├── eval/
+│       │   ├── funnel.py       # OCR pipeline stage counters
+│       │   ├── models.py       # GroundTruth / EvalResult
+│       │   └── scoring.py      # Recall/precision scoring (pair + triple matching)
+│       │
+│       ├── merge/
+│       │   └── llm_cleanup.py  # Opt-in Ollama cleanup for OCR/ASR segments ([llm] extra)
 │       │
 │       ├── ocr/
-│       │   ├── __init__.py
+│       │   ├── _text_match.py      # Canonical-key + fuzzy-match primitives
+│       │   ├── bbox_aggregator.py  # Same-line joining, column splitting, spatial dedup
+│       │   ├── deduplicator.py     # Cross-frame text dedup
 │       │   ├── frame_sampler.py    # Scene-change + interval frame extraction
 │       │   ├── preprocessor.py     # Image preprocessing
-│       │   ├── rapid_ocr.py        # RapidOCR (ONNXRuntime) wrapper
-│       │   ├── deduplicator.py     # Cross-frame text dedup
-│       │   └── ui_filter.py        # Platform UI element filtering (patterns + frequency)
+│       │   ├── protocol.py         # OcrEngine Protocol (backend extension seam)
+│       │   ├── rapid_ocr.py        # RapidOCR (ONNXRuntime) engine
+│       │   └── ui_filter.py        # Platform UI filtering (zones + patterns + frequency)
 │       │
 │       └── platforms/
-│           ├── __init__.py
-│           ├── base.py         # Base platform profile
-│           ├── registry.py     # Profile selection (auto-detect or override)
+│           ├── base.py         # PlatformProfile dataclass (zones, patterns)
+│           ├── registry.py     # Profile selection (auto-detect, generic fallback)
 │           ├── tiktok.py       # TikTok UI regions & patterns
 │           ├── youtube.py      # YouTube/Shorts UI regions
 │           └── instagram.py    # Instagram Reels UI regions
 │
-├── tests/
-│   ├── conftest.py
-│   ├── test_pipeline.py
-│   ├── test_asr.py
-│   ├── test_ocr.py
-│   ├── test_merge.py
-│   ├── test_platforms.py
-│   └── fixtures/               # Sample video clips, expected outputs
+├── scripts/
+│   └── eval_ocr.py             # Standalone eval harness (video or --images vs ground truth)
+│
+├── tests/                      # 27 test modules mirroring src (541 tests)
+│   └── fixtures/eval/          # example-gt.json tracked; media + real GT gitignored
 │
 └── docs/
-    ├── architecture.md
-    ├── configuration.md
-    └── adding-platforms.md     # Guide for adding new platform profiles
+    ├── architecture.md         # Module map, pipeline flow, extension seams
+    ├── configuration.md        # Full OMNI_* field/env reference + precedence
+    ├── adding-platforms.md     # Guide for adding new platform profiles
+    └── plans/                  # Historical sprint/phase plans (kept as project history)
 ```
 
 ## Implementation Phases
