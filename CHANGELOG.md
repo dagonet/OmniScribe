@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-07-14
+
 ### Added
 
 - **Coverage gate enforced in CI at 95%** — `ci.yml` now runs `pytest --cov=omniscribe --cov-report=term-missing --cov-fail-under=95`. The explicit `--cov-fail-under` flag guarantees enforcement even if `pyproject.toml`'s `[tool.coverage.report] fail_under` is not honoured by pytest-cov.
@@ -203,6 +205,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.2.3]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.3
 [0.2.2]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.2
 [0.2.1]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.1
 [0.2.0]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.0
