@@ -28,9 +28,9 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from omniscribe import __version__
-from omniscribe.cli import process_single_video
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
+from omniscribe.pipeline import process_single_video
 
 if TYPE_CHECKING:
     from collections.abc import Callable

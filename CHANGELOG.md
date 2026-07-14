@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Internal: pipeline orchestration extracted** from `cli.py` into new `omniscribe.pipeline` module. API server imports from `pipeline` directly, breaking the layering violation where `api/server.py` depended on the CLI module. `cli.py` retains a re-export shim for test-patch compatibility.
+
 ## [0.2.1] - 2026-07-14
 
 ### Added
