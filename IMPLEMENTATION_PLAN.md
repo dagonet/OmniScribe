@@ -325,6 +325,7 @@ Merged output:
 | Phase 4 — Merge engine | Complete | `docs/plans/phase-4-merge-engine.md`; Sprint 4.1 (PR #4, `5c81ced`) and Sprint 4.2 (PR #5, `b2a89d6`) merged |
 | Phase 5 — Polish & extensibility | Complete | Sprints 5.1 (PR #6, `530902f`, doc trust-repair), 5.2 (PR #7, `db3e4b1`, CI/CD), 5.3 (PR #8, `3605a19`, doc/code drift), 5.4 (PR #26, `bf4ef74`, batch processing) merged; LLM cleanup shipped via Sprints 6.1 (PR #12), 6.2 (PR #14), and `681fa03` robustness; **Docker** shipped v0.1.2 |
 | Hardening & OCR-quality campaign (post-Phase-5) | Complete | Windows GPU without system CUDA (Sprints 7.2–7.4, v0.1.1); playlist/channel batch expansion (Sprint 8.1, v0.1.2); OCR language auto-resolution + caption-mask toggles (v0.1.3); eval-matching + aggregation fixes (Sprints 9.2–9.3, v0.1.4–v0.1.5); det/model diagnostic knobs (Sprints 9.4–9.5, v0.1.6); **photo-mode-native pipeline** + spatial dedup (Sprints 9.6–9.7, v0.1.7) — three-sample eval matrix at recall 1.0; Docker photo extra (v0.1.8) |
+| Health pass (post-v0.2.1) | Complete | **Architecture refactor** (Sprints 10.1, PRs #62–#65, v0.2.2): `omniscribe.pipeline` extraction, `OcrEngine` protocol, `write_transcript` registry, `docs/architecture+configuration+adding-platforms.md`; **coverage gate** (Sprint 10.2, PR #67, v0.2.3): CI enforces ≥95%, total 98.40%; **eval-samples infrastructure** (Sprint 10.3, PR #69, v0.2.4): manifest + fetch script + opt-in `eval` regression suite (sample-3 recall 1.0 re-verified live post-refactor) |
 | Phase 6 — Advanced features | In progress | **Speech translation** shipped v0.1.9 (Sprint 9.9, PR #53); **API mode** shipped v0.2.0 (Sprint 9.10, PR #55); playlist/channel support shipped earlier (Sprint 8.1, v0.1.2); remaining items open — see list below |
 
 ### Phase 6: Advanced Features
@@ -345,7 +346,8 @@ Still open, not scheduled:
 - **YouTube chapters mode** — segment the transcript by detected chapters on long videos; yt-dlp already exposes chapter metadata (T2-T3)
 - **v3-EN-det retirement measurement** — the default "EN det" OCR model is actually a PP-OCRv3 mobile model; a GPU A/B (CH-v4 det on eval samples 2/3) could yield free quality and retire the v3 routing (T2, one GPU session)
 - **Instagram carousel support** — extend `is_photo_post` for IG carousels; gallery-dl already handles the extractor, the whole photo-mode-native pipeline is reused (T2-T3)
-- **API v1 hardening** — deliberate v1 non-goals, revisit on demand: auth, job persistence, cancellation, and `JobRequest` option parity with the CLI (`ui_filter`/`scene_change`/LLM-cleanup fields were an explicit Sprint 9.11 carveout)
+- **API v1 hardening** — deliberate v1 non-goals, revisit on demand: auth, job persistence, cancellation, and `JobRequest` option parity with the CLI (`ui_filter`/`scene_change`/LLM-cleanup fields were an explicit Sprint 9.11 carveout). Groundwork exists since v0.2.2: `errors.py` documents the intended `AcquireError`/`TranscriptionError`/`OcrError` hierarchy to implement alongside API error-kind surfacing
+- **Vision-LLM OCR backend** — alternative engine (e.g. Qwen2.5-VL, Llama 3.2 Vision) for stylized text; promoted from Open Questions now that the extension seam exists: implement the `OcrEngine` protocol (`ocr/protocol.py`, v0.2.2 — structural, no inheritance needed). Needs new eval samples first — the current three-sample matrix is already at recall 1.0, so this only pays on harder content classes
 - **Template sync** *(dev-infra)* — pull the current claude-code-toolkit template to restore `hooks/run-gate.sh` (referenced by CLAUDE.md's gate rule but absent from this repo)
 - **Docker CI build job** *(dev-infra)* — add a build-only GitHub Actions job for the Dockerfile; image changes are currently verified by inspection only
 
@@ -470,7 +472,6 @@ MIT — open source, free to use and modify.
 
 Still open:
 
-- [ ] Should the OCR module support a "vision LLM" backend (e.g. Qwen2.5-VL, Llama 3.2 Vision) as an alternative to RapidOCR for higher accuracy on stylized text?
 - [ ] Should the merge engine surface a unified per-segment confidence/uncertainty flag? (Segments already carry raw confidences — ASR `avg_logprob`, OCR detection confidence — but nothing interprets them.)
 
 Resolved:
@@ -478,3 +479,4 @@ Resolved:
 - [x] Caching strategy for models — **lazy download on first use** locally (faster-whisper/RapidOCR default); the Docker image pre-downloads both at build time (v0.1.2).
 - [x] Platform profile format — **Python classes** (`src/omniscribe/platforms/`); settled since Phase 3, no YAML need has appeared.
 - [x] YouTube "chapters" mode — answered yes in principle; promoted to the Phase 6 backlog list above (not scheduled).
+- [x] Vision-LLM OCR backend — answered yes in principle; the `OcrEngine` protocol (v0.2.2) is the implementation seam. Promoted to the Phase 6 backlog list above (not scheduled — needs new eval samples first).
