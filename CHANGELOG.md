@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-07-14
+
 ### Added
 
 - **Eval samples manifest + fetch script** — `tests/fixtures/eval/README.md` documents three eval samples (two TikTok PHOTO posts, one TikTok VIDEO) with source URLs, fixture paths, ground-truth schema, and known-good baselines. `scripts/fetch_eval_samples.py` automates the download (gallery-dl for PHOTO, yt-dlp for VIDEO); idempotent, skips existing files.
@@ -211,6 +213,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.2.4]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.4
 [0.2.4]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.4
 [0.2.3]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.3
 [0.2.2]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.2
