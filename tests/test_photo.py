@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from omniscribe.acquire.photo import (
+    _run_gallery_dl,
     download_photo_post,
     is_photo_post,
     scan_photo_dir,
@@ -76,6 +78,54 @@ def test_download_photo_post_no_images_raises(tmp_path: Path) -> None:
         pytest.raises(OmniScribeError, match="no slides downloaded"),
     ):
         download_photo_post("https://www.tiktok.com/@u/photo/1", tmp_path)
+
+
+# -- _run_gallery_dl -----------------------------------------------------------
+
+
+def test_run_gallery_dl_module_success(tmp_path: Path) -> None:
+    """Module invocation succeeds -> return (no error)."""
+    mock_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
+    with patch("omniscribe.acquire.photo.subprocess.run", return_value=mock_proc):
+        _run_gallery_dl(tmp_path, "https://x.com/photo/1")
+
+
+def test_run_gallery_dl_module_not_found_raises(tmp_path: Path) -> None:
+    """Module fails with 'No module named' in stderr -> OmniScribeError."""
+    mock_proc = subprocess.CompletedProcess(
+        args=[], returncode=1, stdout=b"", stderr=b"No module named 'gallery_dl'"
+    )
+    with (
+        patch("omniscribe.acquire.photo.subprocess.run", return_value=mock_proc),
+        pytest.raises(OmniScribeError, match="uv sync --extra photo"),
+    ):
+        _run_gallery_dl(tmp_path, "https://x.com/photo/1")
+
+
+def test_run_gallery_dl_binary_fallback_success(tmp_path: Path) -> None:
+    """Module raises FileNotFoundError, binary fallback succeeds -> return."""
+    mock_proc = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"", stderr=b"")
+    with (
+        patch(
+            "omniscribe.acquire.photo.subprocess.run",
+            side_effect=[FileNotFoundError, mock_proc],
+        ),
+        patch("omniscribe.acquire.photo.shutil.which", return_value="/usr/bin/gallery-dl"),
+    ):
+        _run_gallery_dl(tmp_path, "https://x.com/photo/1")
+
+
+def test_run_gallery_dl_binary_fallback_not_found_raises(tmp_path: Path) -> None:
+    """Both module and binary raise FileNotFoundError -> OmniScribeError."""
+    with (
+        patch(
+            "omniscribe.acquire.photo.subprocess.run",
+            side_effect=[FileNotFoundError, FileNotFoundError],
+        ),
+        patch("omniscribe.acquire.photo.shutil.which", return_value="/usr/bin/gallery-dl"),
+        pytest.raises(OmniScribeError, match="gallery-dl failed"),
+    ):
+        _run_gallery_dl(tmp_path, "https://x.com/photo/1")
 
 
 # -- scan_photo_dir -----------------------------------------------------------

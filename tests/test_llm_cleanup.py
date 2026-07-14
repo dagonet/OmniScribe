@@ -526,6 +526,99 @@ def test_keep_alive_passed_to_speech_chat(mock_ollama_client: MagicMock) -> None
     assert mock_ollama_client.chat.call_args.kwargs["keep_alive"] == 120.0
 
 
+# ── Response-shape guard branches ────────────────────────────────────────────
+
+
+def test_models_presence_gate_list_as_tags(
+    mock_ollama_client: MagicMock,
+) -> None:
+    """client.list() returns a list (no .models attr) -> models_iter = tags.
+
+    Covers the ``models_iter = tags`` fallback for both cleanup functions
+    (lines 174 and 319 in llm_cleanup.py).
+    """
+    mock_ollama_client.list.return_value = [
+        SimpleNamespace(model="llama3.2:3b"),
+    ]
+    segments = [_seg("ON-SCREEN", "text")]
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        # No error means the gate passed.
+        cleanup_ocr_segments(segments, _cfg())
+
+
+def test_models_presence_gate_dict_entries(
+    mock_ollama_client: MagicMock,
+) -> None:
+    """client.list() returns dict entries (no .model/.name attrs) -> entry.get().
+
+    Covers the ``entry.get("model")`` dict fallback for both cleanup
+    functions (lines 178 and 323).
+    """
+    mock_ollama_client.list.return_value = [
+        {"model": "llama3.2:3b"},
+    ]
+    segments = [_seg("ON-SCREEN", "text")]
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        cleanup_ocr_segments(segments, _cfg())
+
+
+def test_response_as_namespace_object(
+    mock_ollama_client: MagicMock,
+) -> None:
+    """chat() returns a namespace object (not dict) -> getattr fallback.
+
+    Covers the ``getattr(response, "message", None)`` and
+    ``getattr(message, "content", None)`` guard branches in
+    cleanup_ocr_segments (lines 209, 213).
+    """
+    segments = [_seg("ON-SCREEN", "hello")]
+    mock_ollama_client.chat.return_value = SimpleNamespace(
+        message=SimpleNamespace(content="world"),
+    )
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        result = cleanup_ocr_segments(segments, _cfg())
+
+    assert result[0].text == "world"
+
+
+def test_asr_models_presence_gate_list_as_tags(
+    mock_ollama_client: MagicMock,
+) -> None:
+    """client.list() returns a list directly (no .models) in cleanup_speech_segments."""
+    mock_ollama_client.list.return_value = [
+        SimpleNamespace(model="llama3.2:3b"),
+    ]
+    segments = [_seg("SPEECH", "text")]
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        cleanup_speech_segments(segments, _asr_cfg())
+
+
+def test_asr_models_presence_gate_dict_entries(
+    mock_ollama_client: MagicMock,
+) -> None:
+    """client.list() returns dict entries in cleanup_speech_segments."""
+    mock_ollama_client.list.return_value = [
+        {"model": "llama3.2:3b"},
+    ]
+    segments = [_seg("SPEECH", "text")]
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        cleanup_speech_segments(segments, _asr_cfg())
+
+
+def test_asr_response_as_namespace_object(
+    mock_ollama_client: MagicMock,
+) -> None:
+    """chat() returns namespace object in cleanup_speech_segments."""
+    segments = [_seg("SPEECH", "hello")]
+    mock_ollama_client.chat.return_value = SimpleNamespace(
+        message=SimpleNamespace(content="world"),
+    )
+    with patch("omniscribe.merge.llm_cleanup.Client", return_value=mock_ollama_client):
+        result = cleanup_speech_segments(segments, _asr_cfg())
+
+    assert result[0].text == "world"
+
+
 @pytest.mark.integration
 def test_integration_asr_live_ollama_smoke() -> None:  # pragma: no cover
     """Real Ollama + real llama3.2:3b on an unpunctuated SPEECH fixture.
