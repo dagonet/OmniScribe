@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-07-14
+
 ### Added
 
 - **New `transcribe-many` flags** — `--ocr-language`, `--ui-filter/--no-ui-filter`, and `--scene-change/--no-scene-change` are now available on `transcribe-many`, matching `transcribe` (#52).
@@ -180,6 +182,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
+[0.2.1]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.1
 [0.2.0]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.0
 [0.1.9]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.9
 [0.1.8]: https://github.com/dagonet/OmniScribe/releases/tag/v0.1.8
