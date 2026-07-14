@@ -156,11 +156,12 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra -q --strict-markers -m 'not integration'"
+addopts = "-ra -q --strict-markers -m 'not integration and not eval'"
 markers = [
     "slow: marks tests that require model inference (deselect with '-m \"not slow\"')",
     "gpu: marks tests that require a GPU",
     "integration: requires a live local Ollama server; skipped in CI",
+    "eval: requires eval fixture files (media + ground truth); skipped in CI",
 ]
 
 # ── Coverage ──────────────────────────────────────────
