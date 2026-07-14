@@ -329,6 +329,12 @@ Still open, not scheduled:
 - **Content analysis** — Sentiment, topic extraction, hashtag correlation (candidate for the existing Ollama `[llm]` plumbing)
 - **Browser extension** — Transcribe while browsing TikTok/YouTube/Instagram (requires API mode — now available)
 - **Twitter/X + Facebook platform profiles** — UI-filter profiles for additional platforms (tracked in README "Supported Platforms"; pipeline is already platform-agnostic)
+- **YouTube chapters mode** — segment the transcript by detected chapters on long videos; yt-dlp already exposes chapter metadata (T2-T3)
+- **v3-EN-det retirement measurement** — the default "EN det" OCR model is actually a PP-OCRv3 mobile model; a GPU A/B (CH-v4 det on eval samples 2/3) could yield free quality and retire the v3 routing (T2, one GPU session)
+- **Instagram carousel support** — extend `is_photo_post` for IG carousels; gallery-dl already handles the extractor, the whole photo-mode-native pipeline is reused (T2-T3)
+- **API v1 hardening** — deliberate v1 non-goals, revisit on demand: auth, job persistence, cancellation, and `JobRequest` option parity with the CLI (`ui_filter`/`scene_change`/LLM-cleanup fields were an explicit Sprint 9.11 carveout)
+- **Template sync** *(dev-infra)* — pull the current claude-code-toolkit template to restore `hooks/run-gate.sh` (referenced by CLAUDE.md's gate rule but absent from this repo)
+- **Docker CI build job** *(dev-infra)* — add a build-only GitHub Actions job for the Dockerfile; image changes are currently verified by inspection only
 
 ## Configuration Model
 
@@ -452,10 +458,10 @@ MIT — open source, free to use and modify.
 Still open:
 
 - [ ] Should the OCR module support a "vision LLM" backend (e.g. Qwen2.5-VL, Llama 3.2 Vision) as an alternative to RapidOCR for higher accuracy on stylized text?
-- [ ] For long YouTube videos: should there be a "chapters" mode that segments the transcript by detected chapters?
 - [ ] Should the merge engine surface a unified per-segment confidence/uncertainty flag? (Segments already carry raw confidences — ASR `avg_logprob`, OCR detection confidence — but nothing interprets them.)
 
 Resolved:
 
 - [x] Caching strategy for models — **lazy download on first use** locally (faster-whisper/RapidOCR default); the Docker image pre-downloads both at build time (v0.1.2).
 - [x] Platform profile format — **Python classes** (`src/omniscribe/platforms/`); settled since Phase 3, no YAML need has appeared.
+- [x] YouTube "chapters" mode — answered yes in principle; promoted to the Phase 6 backlog list above (not scheduled).
