@@ -109,16 +109,18 @@ def _patched_pipeline(tmp_path: Path):
     Sprint 6.2: additionally patches ``cleanup_speech_segments``. The 6-tuple
     return is ``(download, extract, whisper, ocr, llm_cleanup, asr_cleanup)``.
     """
-    download_patch = patch("omniscribe.cli.download_video", return_value=tmp_path / "video.mp4")
-    extract_patch = patch("omniscribe.cli.extract_audio", return_value=tmp_path / "audio.wav")
-    whisper_patch = patch("omniscribe.cli.WhisperTranscriber")
-    ocr_patch = patch("omniscribe.cli.RapidOCREngine")
+    download_patch = patch(
+        "omniscribe.pipeline.download_video", return_value=tmp_path / "video.mp4"
+    )
+    extract_patch = patch("omniscribe.pipeline.extract_audio", return_value=tmp_path / "audio.wav")
+    whisper_patch = patch("omniscribe.pipeline.WhisperTranscriber")
+    ocr_patch = patch("omniscribe.pipeline.RapidOCREngine")
     llm_cleanup_patch = patch(
-        "omniscribe.cli.cleanup_ocr_segments",
+        "omniscribe.pipeline.cleanup_ocr_segments",
         side_effect=lambda segs, cfg: segs,
     )
     asr_cleanup_patch = patch(
-        "omniscribe.cli.cleanup_speech_segments",
+        "omniscribe.pipeline.cleanup_speech_segments",
         side_effect=lambda segs, cfg: segs,
     )
     return (
@@ -222,7 +224,7 @@ def test_transcribe_omniscribe_error_exits_nonzero(tmp_path: Path, monkeypatch) 
     output = tmp_path / "out.json"
 
     with patch(
-        "omniscribe.cli.download_video",
+        "omniscribe.pipeline.download_video",
         side_effect=OmniScribeError("ffmpeg not found on PATH"),
     ):
         result = CliRunner().invoke(
@@ -1730,9 +1732,9 @@ def test_transcribe_photo_url_routes_to_photo_path(tmp_path: Path, monkeypatch) 
         oc as mock_ocr_cls,
         lc,
         ac,
-        patch("omniscribe.cli.is_photo_post", return_value=True),
-        patch("omniscribe.cli.download_photo_post", return_value=photo_post),
-        patch("omniscribe.cli.get_duration", return_value=None),
+        patch("omniscribe.pipeline.is_photo_post", return_value=True),
+        patch("omniscribe.pipeline.download_photo_post", return_value=photo_post),
+        patch("omniscribe.pipeline.get_duration", return_value=None),
     ):
         mock_ocr_cls.return_value.extract_images.return_value = []
         mock_ocr_cls.return_value.last_frame_count = 0
@@ -1768,7 +1770,7 @@ def test_transcribe_local_dir_routes_to_photo_path(tmp_path: Path, monkeypatch) 
         oc as mock_ocr_cls,
         lc,
         ac,
-        patch("omniscribe.cli.get_duration", return_value=None),
+        patch("omniscribe.pipeline.get_duration", return_value=None),
     ):
         mock_ocr_cls.return_value.extract_images.return_value = []
         mock_ocr_cls.return_value.last_frame_count = 0
