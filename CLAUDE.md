@@ -235,6 +235,8 @@ Before marking any commit/push complete, verify:
 
 **Merge ownership:** Developer agents (`coder`, variant coders, `general-purpose`) own the merge — rebase, CI-check, and squash-merge are the developer's job. The PO sequences merges across workstreams by sending merge-go-ahead messages. See `AGENT_TEAM.md` → Merge Protocol.
 
+**Green-CI merge gate (definition of done):** a PR may be merged ONLY after its head SHA shows a successful GitHub Actions run — check via `gh_workflow_list` / `github_workflow_run_wait` and require `conclusion=success` before `merge_pull_request`. Local green is insufficient: platform-specific failures (e.g. Linux-only import errors) never surface on Windows. After merging, confirm main's push run is also green. If CI is red for an unrelated reason, fix CI first — never merge on top of red. The PO includes this gate in every dev spawn prompt's merge instructions and re-checks Actions status at every release.
+
 ---
 
 # Compact Instructions
