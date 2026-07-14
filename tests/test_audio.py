@@ -76,7 +76,13 @@ def test_get_duration_parses_ffprobe(tmp_path: Path) -> None:
     audio.write_bytes(b"fake")
     mock_stdout = subprocess.CompletedProcess(args=[], returncode=0, stdout=b"13.35\n", stderr=b"")
 
-    with patch("omniscribe.audio.subprocess.run", return_value=mock_stdout):
+    # shutil.which must be patched too: get_duration early-returns None when
+    # ffprobe is absent from PATH, so on ffmpeg-less environments the
+    # subprocess mock would never be reached.
+    with (
+        patch("omniscribe.audio.subprocess.run", return_value=mock_stdout),
+        patch("omniscribe.audio.shutil.which", return_value="/usr/bin/ffprobe"),
+    ):
         from omniscribe.audio import get_duration
 
         result = get_duration(audio)

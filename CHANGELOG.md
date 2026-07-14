@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI green again / headless Linux imports** — rapidocr hard-depends on the full `opencv-python` wheel, which dlopens `libGL` at import; when GitHub rolled the `ubuntu-latest` runner image on 2026-07-13 (dropping libGL), `import cv2` started failing and every CI run since Sprint 9.6 was red (6 test modules failed collection). A `[tool.uv] override-dependencies` entry now removes `opencv-python` from resolution via an unsatisfiable marker, leaving `opencv-python-headless` (API-identical for rapidocr's usage) as the only `cv2` provider. Note for existing local venvs: run `uv sync` and, if `import cv2` then fails, `uv pip install --reinstall opencv-python-headless` once — uninstalling the full wheel can orphan the shared `cv2/` files.
+
 ## [0.2.0] - 2026-07-13
 
 ### Added

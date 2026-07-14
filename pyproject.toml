@@ -79,6 +79,18 @@ Repository = "https://github.com/dagonet/omniscribe"
 Issues = "https://github.com/dagonet/omniscribe/issues"
 Changelog = "https://github.com/dagonet/omniscribe/blob/main/CHANGELOG.md"
 
+[tool.uv]
+# rapidocr hard-depends on the full opencv-python wheel, which dlopens libGL
+# at import time and breaks headless Linux (GitHub runners dropped libGL from
+# ubuntu-latest on 2026-07-13, turning this latent conflict into a hard CI
+# failure — two wheels were installing into the same cv2/ package). This
+# project ships opencv-python-headless; cv2's Python API is identical for
+# rapidocr's imgproc usage. The unsatisfiable marker removes opencv-python
+# from resolution entirely, leaving headless as the only cv2 provider.
+override-dependencies = [
+    "opencv-python ; sys_platform == 'never'",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
