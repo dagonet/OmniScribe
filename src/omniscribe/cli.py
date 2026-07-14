@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 from rich.progress import Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-from omniscribe import __version__
+from omniscribe import __version__, pipeline
 from omniscribe.acquire.platform import Platform
 from omniscribe.batch import (
     BatchState,
@@ -28,11 +28,6 @@ from omniscribe.batch import (
 )
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
-from omniscribe.pipeline import (
-    _quiet_pipeline_logging,
-    _resolve_output_format,
-    process_single_video,
-)
 
 # Output-format choices mirror ``config._VALID_OUTPUT_FORMATS`` / the
 # ``output.write_*`` writers. Kept as a module-level constant so the flag
@@ -241,7 +236,7 @@ def transcribe(
         translate=translate,
     )
 
-    resolved_format = _resolve_output_format(
+    resolved_format = pipeline._resolve_output_format(
         flag=output_format,
         env_value=os.environ.get("OMNI_OUTPUT_FORMAT"),
         output_path=output,
@@ -251,7 +246,7 @@ def transcribe(
     ocr_active = ocr if ocr is not None else config.ocr_enabled
 
     try:
-        process_single_video(
+        pipeline.process_single_video(
             source,
             config,
             output,
@@ -422,7 +417,7 @@ def transcribe_many(
         transient=False,
     )
     try:
-        with progress, _quiet_pipeline_logging():
+        with progress, pipeline._quiet_pipeline_logging():
             task_id = progress.add_task(f"0/{total} starting", total=len(pending_indices) or None)
             for done_so_far, idx in enumerate(pending_indices, start=1):
                 item = state.items[idx]
@@ -441,7 +436,7 @@ def transcribe_many(
                 try:
                     any_attempt = True
                     assert item.output_path is not None  # set above
-                    process_single_video(
+                    pipeline.process_single_video(
                         item.source,
                         config,
                         item.output_path,

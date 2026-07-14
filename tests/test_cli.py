@@ -813,7 +813,7 @@ class TestResolveOutputFormat:
     """
 
     def test_flag_overrides_everything(self) -> None:
-        from omniscribe.cli import _resolve_output_format
+        from omniscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -826,7 +826,7 @@ class TestResolveOutputFormat:
         )
 
     def test_env_set_wins_over_extension(self) -> None:
-        from omniscribe.cli import _resolve_output_format
+        from omniscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -844,7 +844,7 @@ class TestResolveOutputFormat:
         Regression guard for the "env equals hard default" ambiguity:
         presence is the trigger, not value-differs-from-default.
         """
-        from omniscribe.cli import _resolve_output_format
+        from omniscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -857,7 +857,7 @@ class TestResolveOutputFormat:
         )
 
     def test_empty_env_value_ignored(self) -> None:
-        from omniscribe.cli import _resolve_output_format
+        from omniscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -870,7 +870,7 @@ class TestResolveOutputFormat:
         )
 
     def test_extension_inference_when_env_unset(self) -> None:
-        from omniscribe.cli import _resolve_output_format
+        from omniscribe.pipeline import _resolve_output_format
 
         for suffix, expected in (
             (".json", "json"),
@@ -890,7 +890,7 @@ class TestResolveOutputFormat:
             ), suffix
 
     def test_unknown_extension_falls_to_default(self) -> None:
-        from omniscribe.cli import _resolve_output_format
+        from omniscribe.pipeline import _resolve_output_format
 
         assert (
             _resolve_output_format(
@@ -1196,7 +1196,7 @@ def test_transcribe_many_empty_file(tmp_path: Path, monkeypatch) -> None:
     urls_file = _write_urls(tmp_path, [])
     out_dir = tmp_path / "out"
 
-    with patch("omniscribe.cli.process_single_video") as mock_proc:
+    with patch("omniscribe.pipeline.process_single_video") as mock_proc:
         result = CliRunner().invoke(
             app,
             [
@@ -1232,7 +1232,7 @@ def test_transcribe_many_unwritable_output_dir_fails_fast(tmp_path: Path, monkey
 
     monkeypatch.setattr(Path, "write_bytes", _maybe_deny)
 
-    with patch("omniscribe.cli.process_single_video") as mock_proc:
+    with patch("omniscribe.pipeline.process_single_video") as mock_proc:
         result = CliRunner().invoke(
             app,
             [
@@ -1266,7 +1266,7 @@ def test_transcribe_many_all_succeed(tmp_path: Path, monkeypatch) -> None:
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1299,7 +1299,7 @@ def test_transcribe_many_mixed_valid_invalid(tmp_path: Path, monkeypatch) -> Non
             raise OmniScribeError("Video unavailable: this video is private")
 
     with (
-        patch("omniscribe.cli.process_single_video", side_effect=_fake_proc),
+        patch("omniscribe.pipeline.process_single_video", side_effect=_fake_proc),
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1345,7 +1345,7 @@ def test_transcribe_many_resume_skips_done(tmp_path: Path, monkeypatch) -> None:
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1388,7 +1388,7 @@ def test_transcribe_many_resume_retries_failed_and_pending(tmp_path: Path, monke
         return output_dir / f"{stem}{ext}"
 
     with (
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1436,7 +1436,7 @@ def test_transcribe_many_resume_against_edited_list_drops_orphans_and_appends_ne
         return output_dir / f"{source}{ext}"
 
     with (
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1472,7 +1472,7 @@ def test_transcribe_many_ctrl_c_mid_item_keeps_state_valid(tmp_path: Path, monke
             raise KeyboardInterrupt
 
     with (
-        patch("omniscribe.cli.process_single_video", side_effect=_fake_proc),
+        patch("omniscribe.pipeline.process_single_video", side_effect=_fake_proc),
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1516,7 +1516,7 @@ def test_transcribe_many_expands_playlist_url(tmp_path: Path, monkeypatch) -> No
 
     with (
         patch("omniscribe.cli.expand_url_list", side_effect=_fake_expand),
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1559,7 +1559,7 @@ def test_transcribe_many_mixed_playlist_and_singles(tmp_path: Path, monkeypatch)
 
     with (
         patch("omniscribe.cli.expand_url_list", side_effect=_fake_expand),
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1589,7 +1589,7 @@ def test_transcribe_many_playlist_url_not_in_state(tmp_path: Path, monkeypatch) 
 
     with (
         patch("omniscribe.cli.expand_url_list", side_effect=lambda urls: expanded),
-        patch("omniscribe.cli.process_single_video"),
+        patch("omniscribe.pipeline.process_single_video"),
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1641,7 +1641,7 @@ def test_transcribe_many_playlist_resume_skips_done(tmp_path: Path, monkeypatch)
 
     with (
         patch("omniscribe.cli.expand_url_list", side_effect=lambda urls: expanded),
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1675,7 +1675,7 @@ def test_transcribe_many_playlist_extraction_failure_keeps_url(tmp_path: Path, m
     with (
         # extraction "failed" → expand_url_list returns the URL unchanged.
         patch("omniscribe.cli.expand_url_list", side_effect=lambda urls: list(urls)),
-        patch("omniscribe.cli.process_single_video", side_effect=_fake_proc),
+        patch("omniscribe.pipeline.process_single_video", side_effect=_fake_proc),
         patch("omniscribe.cli.compute_output_path", side_effect=_fake_compute),
     ):
         result = CliRunner().invoke(
@@ -1699,7 +1699,7 @@ def test_transcribe_many_all_playlists_empty(tmp_path: Path, monkeypatch) -> Non
 
     with (
         patch("omniscribe.cli.expand_url_list", return_value=[]),
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
     ):
         result = CliRunner().invoke(
             app,
@@ -1791,7 +1791,7 @@ def test_transcribe_local_dir_routes_to_photo_path(tmp_path: Path, monkeypatch) 
 def test_translate_flag_sets_whisper_task(tmp_path: Path) -> None:
     """``--translate`` on ``transcribe`` sets whisper_task='translate' on config."""
     output = tmp_path / "out.json"
-    with patch("omniscribe.cli.process_single_video") as mock_proc:
+    with patch("omniscribe.pipeline.process_single_video") as mock_proc:
         result = CliRunner().invoke(
             app,
             ["transcribe", "fake.mp4", "--output", str(output), "--translate"],
@@ -1804,7 +1804,7 @@ def test_translate_flag_sets_whisper_task(tmp_path: Path) -> None:
 def test_translate_no_translate_resets_to_transcribe(tmp_path: Path) -> None:
     """``--no-translate`` on ``transcribe`` sets whisper_task='transcribe'."""
     output = tmp_path / "out.json"
-    with patch("omniscribe.cli.process_single_video") as mock_proc:
+    with patch("omniscribe.pipeline.process_single_video") as mock_proc:
         result = CliRunner().invoke(
             app,
             ["transcribe", "fake.mp4", "--output", str(output), "--no-translate"],
@@ -1820,7 +1820,7 @@ def test_transcribe_many_translate_flag_sets_whisper_task(tmp_path: Path) -> Non
     urls_file.write_text("https://example.com/1\nhttps://example.com/2\n", encoding="utf-8")
     out_dir = tmp_path / "out"
     with (
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch(
             "omniscribe.cli.compute_output_path",
             side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
@@ -1852,7 +1852,7 @@ def test_transcribe_many_ocr_language_flag(tmp_path: Path) -> None:
     urls_file.write_text("https://example.com/1\nhttps://example.com/2\n", encoding="utf-8")
     out_dir = tmp_path / "out"
     with (
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch(
             "omniscribe.cli.compute_output_path",
             side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
@@ -1882,7 +1882,7 @@ def test_transcribe_many_ui_filter_flag(tmp_path: Path) -> None:
     urls_file.write_text("https://example.com/1\n", encoding="utf-8")
     out_dir = tmp_path / "out"
     with (
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch(
             "omniscribe.cli.compute_output_path",
             side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
@@ -1911,7 +1911,7 @@ def test_transcribe_many_scene_change_flag(tmp_path: Path) -> None:
     urls_file.write_text("https://example.com/1\n", encoding="utf-8")
     out_dir = tmp_path / "out"
     with (
-        patch("omniscribe.cli.process_single_video") as mock_proc,
+        patch("omniscribe.pipeline.process_single_video") as mock_proc,
         patch(
             "omniscribe.cli.compute_output_path",
             side_effect=lambda s, d, e, t: d / f"{s.split('/')[-1]}{e}",
