@@ -12,6 +12,7 @@ from rapidfuzz import fuzz
 from omniscribe.errors import OmniScribeError
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,7 @@ def write_transcript(transcript: Transcript, path: Path, fmt: str) -> None:
 
     Unknown ``fmt`` raises :class:`OmniScribeError`.
     """
-    _writer_registry: dict[str, object] = {
+    _writer_registry: dict[str, Callable[[Transcript, Path], None]] = {
         "json": write_json,
         "txt": write_txt,
         "srt": write_srt,
@@ -176,7 +177,7 @@ def write_transcript(transcript: Transcript, path: Path, fmt: str) -> None:
     writer = _writer_registry.get(fmt)
     if writer is None:
         raise OmniScribeError(f"Unknown output format: {fmt!r}")
-    writer(transcript, path)  # type: ignore[arg-type]
+    writer(transcript, path)
 
 
 def _overlaps(speech: TranscriptSegment, ocr: TranscriptSegment) -> bool:
