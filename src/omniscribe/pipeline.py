@@ -49,6 +49,7 @@ _EXTENSION_TO_FORMAT: dict[str, str] = {
 
 def _resolve_output_format(
     flag: str | None,
+    *,
     env_value: str | None,
     output_path: Path,
     config_value: str,
