@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Eval samples 4-6** — first German-language photo post (sample 5, stylized handwritten-style caps with umlauts) and first animated-text explainer video (sample 6, EN, 8:51). Manifest, fetch entries, and opt-in eval tests with measured baselines.
+- **Eval sample 4** — clean multi-paragraph text slides (EN photo post).
+
+### Fixed
+
+- **Unicode-safe slide-image loading** — `RapidOCREngine.extract_images` now uses `np.fromfile` + `cv2.imdecode` via a new `_read_image` helper, supporting filenames with emoji and umlaut characters on Windows. gallery-dl names slides after post captions, which can contain these characters. Previously `cv2.imread` returned `None` silently on such paths (``raw_bboxes=0``, OCR channel empty).
+- **Fetch script cross-drive move** — `_download_photo` now uses `shutil.move` instead of `Path.rename`, avoiding ``OSError [WinError 17]`` when system temp and repo are on different drives.
+- **Fetch script video target rename** — `_download_video` now captures the return path from `download_video` and moves it to the declared target path, fixing the bug where yt-dlp's `<video-id>.mp4` output was never renamed to `videos/sample-N.mp4`.
+
 ## [0.2.4] - 2026-07-14
 
 ### Added

@@ -15,6 +15,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import cv2
+import numpy as np
 from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
 
 from omniscribe.errors import OmniScribeError
@@ -33,6 +34,31 @@ if TYPE_CHECKING:
     from omniscribe.platforms.base import PlatformProfile
 
 logger = logging.getLogger(__name__)
+
+
+def _read_image(path: Path) -> np.ndarray | None:
+    """Read an image from ``path`` via :func:`np.fromfile` + :func:`cv2.imdecode`.
+
+    Unlike :func:`cv2.imread` — which returns ``None`` on paths containing
+    non-ASCII characters (emoji, umlauts) on Windows — this helper uses the
+    unicode-safe NumPy → OpenCV decode path.
+
+    Returns the decoded BGR array, or ``None`` if the file does not exist or
+    cannot be decoded.
+    """
+    try:
+        buf = np.fromfile(str(path), dtype=np.uint8)
+        if buf.size == 0:
+            logger.warning("Empty file or unreadable path: %s", path)
+            return None
+        img = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+        if img is None:
+            logger.warning("Failed to decode image: %s", path)
+        return img
+    except OSError:
+        logger.warning("Failed to read image: %s", path, exc_info=True)
+        return None
+
 
 # ISO 639-1 code → LangRec mapping for ASR-detected language → OCR rec model.
 # Values already valid as LangRec members pass through to the enum directly.
@@ -381,9 +407,8 @@ class RapidOCREngine:
         mask_rects: list = []
 
         for i, img_path in enumerate(image_paths):
-            frame = cv2.imread(str(img_path))
+            frame = _read_image(img_path)
             if frame is None:
-                logger.warning("Skipping unreadable image: %s", img_path)
                 continue
 
             start, end = timestamps[i] if timestamps else (float(i), float(i) + 1.0)

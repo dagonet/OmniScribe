@@ -16,6 +16,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import cv2
 import numpy as np
 import pytest
 from rapidocr import LangRec, ModelType, OCRVersion
@@ -697,6 +698,55 @@ def test_default_knobs_still_use_en_det_lang(tmp_path: Path) -> None:
     assert params["Det.lang_type"] is LangRec.EN, "CH override must NOT fire when knobs are None"
 
 
+# -- _read_image unicode-safe helper tests -------------------------------------
+
+
+def test_read_image_unicode_filename(tmp_path: Path) -> None:
+    """_read_image reads a tiny valid image from a path with emoji/umlaut chars."""
+    from omniscribe.ocr.rapid_ocr import _read_image
+
+    # Create a tiny 10x10 black image and encode as JPEG.
+    img = np.zeros((10, 10, 3), dtype=np.uint8)
+    success, buf = cv2.imencode(".jpg", img)
+    assert success
+
+    # Write to a path containing an emoji and umlaut.
+    img_path = tmp_path / "schön_🧵.jpg"
+    img_path.write_bytes(buf.tobytes())
+
+    result = _read_image(img_path)
+    assert result is not None
+    assert result.shape == (10, 10, 3), f"Expected (10, 10, 3), got {result.shape}"
+
+
+def test_read_image_nonexistent_returns_none(tmp_path: Path) -> None:
+    """_read_image returns None for a nonexistent file path."""
+    from omniscribe.ocr.rapid_ocr import _read_image
+
+    result = _read_image(tmp_path / "does_not_exist.jpg")
+    assert result is None
+
+
+def test_read_image_corrupt_file_returns_none(tmp_path: Path) -> None:
+    """_read_image returns None for a corrupt/invalid image file."""
+    from omniscribe.ocr.rapid_ocr import _read_image
+
+    corrupt = tmp_path / "corrupt.jpg"
+    corrupt.write_bytes(b"this is not a valid image file")
+    result = _read_image(corrupt)
+    assert result is None
+
+
+def test_read_image_empty_file_returns_none(tmp_path: Path) -> None:
+    """_read_image returns None for an empty file (buf.size == 0 guard)."""
+    from omniscribe.ocr.rapid_ocr import _read_image
+
+    empty = tmp_path / "empty.jpg"
+    empty.write_bytes(b"")
+    result = _read_image(empty)
+    assert result is None
+
+
 # -- extract_images tests ----------------------------------------------------
 
 
@@ -714,7 +764,7 @@ def test_extract_images_default_index_timestamps(tmp_path: Path) -> None:
 
     with (
         patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
-        patch("omniscribe.ocr.rapid_ocr.cv2.imread", return_value=_fake_frame()),
+        patch("omniscribe.ocr.rapid_ocr._read_image", return_value=_fake_frame()),
     ):
         ocr = RapidOCREngine(config)
         segments = ocr.extract_images(images)
@@ -738,7 +788,7 @@ def test_extract_images_explicit_timestamps(tmp_path: Path) -> None:
 
     with (
         patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
-        patch("omniscribe.ocr.rapid_ocr.cv2.imread", return_value=_fake_frame()),
+        patch("omniscribe.ocr.rapid_ocr._read_image", return_value=_fake_frame()),
     ):
         ocr = RapidOCREngine(config)
         segments = ocr.extract_images(images, timestamps=ts)
@@ -747,8 +797,8 @@ def test_extract_images_explicit_timestamps(tmp_path: Path) -> None:
     assert [(s.start, s.end) for s in segments] == [(10.0, 15.0), (15.0, 20.0)]
 
 
-def test_extract_images_skips_unreadable(tmp_path: Path, caplog) -> None:
-    """Unreadable image (imread returns None) triggers warning and skip."""
+def test_extract_images_skips_unreadable(tmp_path: Path) -> None:
+    """Unreadable image (_read_image returns None) is skipped; counts unaffected."""
     config = _make_config()
     engine_mock = MagicMock()
     engine_mock.return_value = _ocr_output(texts=("text",), scores=(0.9,))
@@ -762,15 +812,13 @@ def test_extract_images_skips_unreadable(tmp_path: Path, caplog) -> None:
 
     with (
         patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
-        patch("omniscribe.ocr.rapid_ocr.cv2.imread", side_effect=read_results),
-        caplog.at_level(logging.WARNING, logger="omniscribe.ocr.rapid_ocr"),
+        patch("omniscribe.ocr.rapid_ocr._read_image", side_effect=read_results),
     ):
         ocr = RapidOCREngine(config)
         segments = ocr.extract_images(images)
 
     assert len(segments) == 2
     assert ocr.last_frame_count == 2
-    assert "Skipping unreadable image" in caplog.text
 
 
 def test_extract_images_no_masking(tmp_path: Path) -> None:
@@ -786,7 +834,7 @@ def test_extract_images_no_masking(tmp_path: Path) -> None:
 
     with (
         patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock),
-        patch("omniscribe.ocr.rapid_ocr.cv2.imread", return_value=_fake_frame()),
+        patch("omniscribe.ocr.rapid_ocr._read_image", return_value=_fake_frame()),
         patch("omniscribe.ocr.rapid_ocr.mask_zones") as mock_mask,
     ):
         ocr = RapidOCREngine(config, profile=TIKTOK_PROFILE)
