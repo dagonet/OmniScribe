@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] - 2026-07-15
+
 ### Added
 
 - **Eval samples 4-6** — first German-language photo post (sample 5, stylized handwritten-style caps with umlauts) and first animated-text explainer video (sample 6, EN, 8:51). Manifest, fetch entries, and opt-in eval tests with measured baselines.
@@ -224,7 +226,7 @@ See README "Known Limitations" — OCR noise on text-heavy backgrounds and
 strict-`<` boundary in `[BOTH]` emission are the two areas tracked for
 post-0.1.0 work.
 
-[0.2.4]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.4
+[0.2.5]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.5
 [0.2.4]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.4
 [0.2.3]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.3
 [0.2.2]: https://github.com/dagonet/OmniScribe/releases/tag/v0.2.2
