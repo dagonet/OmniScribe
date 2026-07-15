@@ -54,3 +54,4 @@ CLAUDE.local.md
 tests/fixtures/eval/videos/
 tests/fixtures/eval/slides/
 tests/fixtures/eval/gt-*.json
+tests/fixtures/eval/new samples/

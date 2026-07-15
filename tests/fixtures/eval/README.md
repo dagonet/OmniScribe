@@ -38,6 +38,41 @@ public repository (legal exposure + repository bloat).
 | Ground truth | `gt-sample-3.json` |
 | Baseline recall | 1.0 (verified v0.1.7) |
 
+### Sample 4 — clean multi-paragraph text slides (TikTok PHOTO, EN)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.tiktok.com/@st.felico/photo/7634604637898689799` |
+| Content class | Clean multi-paragraph text slides (EN photo post) |
+| Fixture path | `slides/sample-4/` (native JPG slides + audio) |
+| Ground truth | `gt-sample-4.json` |
+| Baseline recall | 1.0 (measured v0.2.5, raw_bboxes=60) |
+
+### Sample 5 — stylized handwritten-style caps on textured pencil-art (TikTok PHOTO, DE)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.tiktok.com/@zitatbomben/photo/7640230807587605793` |
+| Content class | Stylized handwritten-style caps on textured pencil-art (DE photo post — hardest OCR class, umlauts) |
+| Fixture path | `slides/sample-5/` (native JPG slides + audio) |
+| Ground truth | `gt-sample-5.json` |
+| Baseline recall | 1.0 (measured v0.2.5, raw_bboxes=75) |
+
+### Sample 6 — animated-text explainer video (TikTok VIDEO, EN)
+
+| Field | Value |
+|---|---|
+| Source URL | `https://www.tiktok.com/@mindshiftdaily022/video/7639000032569462030` |
+| Content class | Animated-text explainer video (EN, 8:51, persistent title banner) |
+| Fixture path | `videos/sample-6.mp4` (h264 720p, aac audio) |
+| Ground truth | `gt-sample-6.json` |
+| Baseline recall | 0.60 (measured v0.2.5, raw_bboxes=176) |
+
+## Notes
+
+- **TikTok bytevc1 / 1080p video-only quirk**: TikTok's bytevc1 and 1080p format variants can be video-only despite metadata claiming aac audio. Sample-6 uses the `h264_720p_*-0` variant which carries audio.
+- **gallery-dl slide filenames**: gallery-dl names downloaded slides after the post caption. These names may contain emoji or umlaut characters — supported since the Sprint 11 unicode-safe image-read fix.
+
 ## Ground Truth Schema
 
 Ground truth files are JSON conforming to the `GroundTruth` pydantic model
@@ -82,7 +117,7 @@ Ground truth files are JSON conforming to the `GroundTruth` pydantic model
    distinct text string visible — even platform chrome (SUBSCRIBE, @user, etc.)
    as `"required": false` entries so they don't lower recall but do keep
    precision honest.
-3. Place the files at `tests/fixtures/eval/gt-sample-{1,2,3}.json`.
+3. Place the files at `tests/fixtures/eval/gt-sample-{1,2,3,4,5,6}.json`.
 4. Run the eval suite: `uv run pytest -m eval -v`.
 
 ## Fetching Fixtures
@@ -90,13 +125,13 @@ Ground truth files are JSON conforming to the `GroundTruth` pydantic model
 Run the fetch script from the repository root:
 
 ```bash
-# Fetch all three samples:
+# Fetch all six samples:
 python scripts/fetch_eval_samples.py
 
 # Fetch a single sample:
-python scripts/fetch_eval_samples.py --sample 3
+python scripts/fetch_eval_samples.py --sample 6
 ```
 
 The script is idempotent: it skips any sample whose target files already
-exist. Samples 1 and 2 require the `[photo]` extra (gallery-dl); sample 3 uses
-yt-dlp (bundled).
+exist. Photo samples (1, 2, 4, 5) require the `[photo]` extra (gallery-dl);
+video samples (3, 6) use yt-dlp (bundled).

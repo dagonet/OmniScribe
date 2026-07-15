@@ -3,13 +3,13 @@
 
 Usage
 -----
-    python scripts/fetch_eval_samples.py          # fetch all three samples
+    python scripts/fetch_eval_samples.py          # fetch all six samples
     python scripts/fetch_eval_samples.py --sample 1   # fetch sample 1 only
-    python scripts/fetch_eval_samples.py --sample 3   # fetch sample 3 only
+    python scripts/fetch_eval_samples.py --sample 6   # fetch sample 6 only
 
-Samples 1 and 2 are TikTok PHOTO posts (image slides + optional audio),
+Samples 1, 2, 4, and 5 are TikTok PHOTO posts (image slides + optional audio),
 downloaded via gallery-dl (requires the ``[photo]`` extra).
-Sample 3 is a TikTok VIDEO, downloaded via yt-dlp.
+Samples 3 and 6 are TikTok VIDEOS, downloaded via yt-dlp.
 
 The script skips any sample whose target files already exist.  Data is placed
 at ``tests/fixtures/eval/{slides,samples,gt-*.json}`` — see the README manifest
@@ -19,6 +19,7 @@ at ``tests/fixtures/eval/README.md`` for the full layout.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
 
@@ -46,6 +47,27 @@ SAMPLES: list[dict] = [
         "target_dir": "videos/sample-3.mp4",
         "expected_files": lambda d: [d] if d.exists() else [],
     },
+    {
+        "id": 4,
+        "url": "https://www.tiktok.com/@st.felico/photo/7634604637898689799",
+        "type": "photo",
+        "target_dir": "slides/sample-4",
+        "expected_files": lambda d: list(d.rglob("*")),
+    },
+    {
+        "id": 5,
+        "url": "https://www.tiktok.com/@zitatbomben/photo/7640230807587605793",
+        "type": "photo",
+        "target_dir": "slides/sample-5",
+        "expected_files": lambda d: list(d.rglob("*")),
+    },
+    {
+        "id": 6,
+        "url": "https://www.tiktok.com/@mindshiftdaily022/video/7639000032569462030",
+        "type": "video",
+        "target_dir": "videos/sample-6.mp4",
+        "expected_files": lambda d: [d] if d.exists() else [],
+    },
 ]
 
 
@@ -60,7 +82,7 @@ def _download_photo(sample: dict) -> None:
         from omniscribe.acquire.photo import download_photo_post
     except ImportError:
         print(
-            "The '[photo]' extra is required for samples 1 and 2. "
+            "The '[photo]' extra is required for photo samples. "
             "Install with: uv sync --extra photo",
             file=sys.stderr,
         )
@@ -73,19 +95,21 @@ def _download_photo(sample: dict) -> None:
         dest = _FIXTURES_DIR / sample["target_dir"]
         dest.mkdir(parents=True, exist_ok=True)
         for p in post.image_paths:
-            p.rename(dest / p.name)
+            shutil.move(str(p), str(dest / p.name))
         if post.audio_path is not None:
-            post.audio_path.rename(dest / post.audio_path.name)
+            shutil.move(str(post.audio_path), str(dest / post.audio_path.name))
     print(f"Sample {sample['id']}: downloaded {len(post.image_paths)} slides to {dest}")
 
 
 def _download_video(sample: dict) -> None:
-    """Download a VIDEO via yt-dlp."""
+    """Download a VIDEO via yt-dlp and rename to the declared target path."""
     from omniscribe.acquire.downloader import download_video
 
     dest = _FIXTURES_DIR / sample["target_dir"]
     dest.parent.mkdir(parents=True, exist_ok=True)
-    download_video(sample["url"], dest.parent)
+    downloaded = download_video(sample["url"], dest.parent)
+    if downloaded != dest:
+        shutil.move(str(downloaded), str(dest))
     print(f"Sample {sample['id']}: downloaded to {dest}")
 
 
@@ -94,7 +118,7 @@ def main() -> None:
     parser.add_argument(
         "--sample",
         type=int,
-        choices=[1, 2, 3],
+        choices=[1, 2, 3, 4, 5, 6],
         default=None,
         help="Sample ID to fetch (default: all three).",
     )

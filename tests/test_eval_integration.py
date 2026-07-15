@@ -47,6 +47,30 @@ SAMPLES: list[dict] = [
         "language": "de",
         "baseline_recall": 1.0,
     },
+    {
+        "id": 4,
+        "type": "photo",
+        "slides_dir": _FIXTURES / "slides" / "sample-4",
+        "gt_path": _FIXTURES / "gt-sample-4.json",
+        "language": "en",
+        "baseline_recall": 1.0,  # measured: 1.0, raw_bboxes=60
+    },
+    {
+        "id": 5,
+        "type": "photo",
+        "slides_dir": _FIXTURES / "slides" / "sample-5",
+        "gt_path": _FIXTURES / "gt-sample-5.json",
+        "language": "de",
+        "baseline_recall": 1.0,  # measured: 1.0, raw_bboxes=75
+    },
+    {
+        "id": 6,
+        "type": "video",
+        "video_path": _FIXTURES / "videos" / "sample-6.mp4",
+        "gt_path": _FIXTURES / "gt-sample-6.json",
+        "language": "en",
+        "baseline_recall": 0.60,  # measured: 0.607, raw_bboxes=176
+    },
 ]
 
 _IMAGE_EXTS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
