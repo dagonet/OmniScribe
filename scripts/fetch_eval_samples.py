@@ -120,7 +120,7 @@ def main() -> None:
         type=int,
         choices=[1, 2, 3, 4, 5, 6],
         default=None,
-        help="Sample ID to fetch (default: all three).",
+        help="Sample ID to fetch (default: all six).",
     )
     args = parser.parse_args()
 

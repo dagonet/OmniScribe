@@ -55,7 +55,7 @@ def _read_image(path: Path) -> np.ndarray | None:
         if img is None:
             logger.warning("Failed to decode image: %s", path)
         return img
-    except Exception:
+    except OSError:
         logger.warning("Failed to read image: %s", path, exc_info=True)
         return None
 

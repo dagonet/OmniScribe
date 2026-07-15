@@ -737,6 +737,16 @@ def test_read_image_corrupt_file_returns_none(tmp_path: Path) -> None:
     assert result is None
 
 
+def test_read_image_empty_file_returns_none(tmp_path: Path) -> None:
+    """_read_image returns None for an empty file (buf.size == 0 guard)."""
+    from omniscribe.ocr.rapid_ocr import _read_image
+
+    empty = tmp_path / "empty.jpg"
+    empty.write_bytes(b"")
+    result = _read_image(empty)
+    assert result is None
+
+
 # -- extract_images tests ----------------------------------------------------
 
 
