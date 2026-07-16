@@ -508,6 +508,49 @@ def test_model_knobs_env_round_trip_and_empty_string(
     assert cfg.ocr_rec_ocr_version is None
 
 
+# ── Sprint 13: ocr_det_lang override ─────────────────────────────────────────
+
+
+def test_ocr_det_lang_defaults_to_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    """ocr_det_lang defaults to None (existing latin-script → EN det path unchanged)."""
+    _strip_omni_env(monkeypatch)
+
+    assert OmniScribeConfig().ocr_det_lang is None
+
+
+@pytest.mark.parametrize("value", ["en", "ch", "multi"])
+def test_ocr_det_lang_accepts_langdet_values(monkeypatch: pytest.MonkeyPatch, value: str) -> None:
+    """The three rapidocr LangDet values (en, ch, multi) are accepted."""
+    _strip_omni_env(monkeypatch)
+
+    assert OmniScribeConfig(ocr_det_lang=value).ocr_det_lang == value
+
+
+def test_ocr_det_lang_normalizes_case(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Case-insensitive input normalised to lowercase canonical form."""
+    _strip_omni_env(monkeypatch)
+
+    assert OmniScribeConfig(ocr_det_lang="MULTI").ocr_det_lang == "multi"
+
+
+def test_ocr_det_lang_rejects_unknown_value(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A LangRec-only script (e.g. ``latin``) is not a valid LangDet det value."""
+    from pydantic import ValidationError
+
+    _strip_omni_env(monkeypatch)
+
+    with pytest.raises(ValidationError, match=r"ocr_det_lang"):
+        OmniScribeConfig(ocr_det_lang="latin")
+
+
+def test_ocr_det_lang_env_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMNI_OCR_DET_LANG env var parses into the field."""
+    _strip_omni_env(monkeypatch)
+    monkeypatch.setenv("OMNI_OCR_DET_LANG", "multi")
+
+    assert OmniScribeConfig().ocr_det_lang == "multi"
+
+
 # ── Sprint 9.9: whisper_task ──────────────────────────────────────────────────
 
 
