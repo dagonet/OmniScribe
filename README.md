@@ -235,7 +235,7 @@ segments. The noise sits alongside them.
 - Tune `OMNI_OCR_MIN_CONFIDENCE` (default `0.6`) higher to suppress
   low-confidence partial detections, at the cost of also missing some real
   text.
-- The `OMNI_OCR_DET_LIMIT_SIDE_LEN` / `OMNI_OCR_DET_THRESH` / `OMNI_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays). Model-variant overrides (`OMNI_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}`) switch to higher-capacity models (server / PP-OCRv5), with an automatic CH-det-lang override when those variants are selected (registry limitation — only `ch_*` det models ship for server/v5).
+- The `OMNI_OCR_DET_LIMIT_SIDE_LEN` / `OMNI_OCR_DET_THRESH` / `OMNI_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays). Model-variant overrides (`OMNI_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}`) switch to higher-capacity models (server / PP-OCRv5), with an automatic CH-det-lang override when those variants are selected (registry limitation — only `ch_*` det models ship for server/v5). `OMNI_OCR_DET_LANG` (`en` | `ch` | `multi`) selects the detection model independently of the recognition language; the default `en` (`en_PP-OCRv3_det_mobile`) is retained after a Sprint 13 A/B, and `multi` (`multi_PP-OCRv3_det_mobile`, the multilingual detector) is an opt-in for hard / low-recall latin-script content — it trades ~3–5× more raw detections for a small quality edge, so it is not the default (see [`docs/plans/2026-07-16-ocr-det-ab.md`](docs/plans/2026-07-16-ocr-det-ab.md)).
 
 ## Docker
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-07-16
+
+### Added
+
+- **`ocr_det_lang` detection-language override** (`OMNI_OCR_DET_LANG` = `en` | `ch` | `multi`) — selects the OCR detection model independently of the recognition language, exposing `multi_PP-OCRv3_det_mobile` (the multilingual detector). It was previously unreachable: the engine passed `LangRec` values for `Det.lang_type`, and `LangRec` has no `multi` member — rapidocr resolves detection through a separate `LangDet` enum. `None` default = byte-identical behavior. Added after a Sprint 13 GPU A/B of the `en`/`multi`/`ch-v5` detectors on the eval set found no detector beat the `en_PP-OCRv3_det_mobile` default under the materiality bar; the default is retained and `multi` is an opt-in for hard / low-recall latin-script content (trades ~3–5× raw detections for a small quality edge). Matrix + rationale: `docs/plans/2026-07-16-ocr-det-ab.md`.
+
 ## [0.2.5] - 2026-07-15
 
 ### Added
