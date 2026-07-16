@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING
 import cv2
 import numpy as np
 from rapidocr import LangRec, ModelType, OCRVersion, RapidOCR
+from rapidocr.utils.typings import LangDet
 
 from omniscribe.errors import OmniScribeError
 from omniscribe.ocr.bbox_aggregator import aggregate_frame_bboxes
@@ -197,7 +198,14 @@ class RapidOCREngine:
             )
             # Detection model: en covers all latin-script languages.
             # Recognition model: uses actual language for character set.
-            det_lang = LangRec.EN if lang == LangRec.LATIN else lang
+            det_lang: LangRec | LangDet = LangRec.EN if lang == LangRec.LATIN else lang
+            # Sprint 13 — optional detection-language override. rapidocr resolves
+            # Det.lang_type through LangDet (only {en, ch, multi}); this is the
+            # sole way to reach multi_PP-OCRv3_det_mobile — the multilingual
+            # detector — for latin-script text. The server/v5 CH-force below
+            # still wins (no non-ch det model ships for those variants).
+            if self._config.ocr_det_lang is not None:
+                det_lang = LangDet(self._config.ocr_det_lang)
             params: dict[str, object] = {
                 "EngineConfig.onnxruntime.use_cuda": use_cuda,
                 "EngineConfig.onnxruntime.cuda_ep_cfg.device_id": 0,

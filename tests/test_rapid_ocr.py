@@ -20,6 +20,7 @@ import cv2
 import numpy as np
 import pytest
 from rapidocr import LangRec, ModelType, OCRVersion
+from rapidocr.utils.typings import LangDet
 
 from omniscribe.config import OmniScribeConfig
 from omniscribe.errors import OmniScribeError
@@ -696,6 +697,68 @@ def test_default_knobs_still_use_en_det_lang(tmp_path: Path) -> None:
     _, kwargs = mock_rapid_cls.call_args
     params = kwargs["params"]
     assert params["Det.lang_type"] is LangRec.EN, "CH override must NOT fire when knobs are None"
+
+
+# ── Sprint 13: ocr_det_lang override (reaches the multilingual det model) ──────
+
+
+@pytest.mark.parametrize(
+    ("det_lang", "expected"),
+    [
+        ("multi", LangDet.MULTI),
+        ("en", LangDet.EN),
+        ("ch", LangDet.CH),
+    ],
+)
+def test_det_lang_override_sets_det_lang_type(
+    tmp_path: Path, det_lang: str, expected: LangDet
+) -> None:
+    """ocr_det_lang overrides Det.lang_type to the requested LangDet value.
+
+    The default path can only reach en/ch (rapidocr's LangRec has no ``multi``);
+    this knob is the sole way to select ``multi_PP-OCRv3_det_mobile`` — the
+    multilingual detector — for latin-script text.
+    """
+    config = _make_config(ocr_language="de", ocr_det_lang=det_lang)
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    _, kwargs = mock_rapid_cls.call_args
+    params = kwargs["params"]
+    assert params["Det.lang_type"] is expected
+
+
+def test_det_lang_override_yields_to_server_ch_force(tmp_path: Path) -> None:
+    """The server/v5 CH-force wins over an explicit ocr_det_lang.
+
+    No non-ch det model ships for server/v5, so an explicit ``multi`` must still
+    resolve to CH rather than request a non-existent ``multi`` server model.
+    """
+    config = _make_config(ocr_language="de", ocr_det_lang="multi", ocr_det_model_type="server")
+    video = tmp_path / "v.mp4"
+    video.write_bytes(b"fake")
+
+    engine_mock = MagicMock()
+    engine_mock.return_value = _ocr_output(texts=(), scores=())
+
+    with (
+        patch("omniscribe.ocr.rapid_ocr.RapidOCR", return_value=engine_mock) as mock_rapid_cls,
+        patch("omniscribe.ocr.rapid_ocr.sample_frames", return_value=iter([])),
+    ):
+        RapidOCREngine(config).extract(video)
+
+    _, kwargs = mock_rapid_cls.call_args
+    params = kwargs["params"]
+    assert params["Det.lang_type"] is LangRec.CH
 
 
 # -- _read_image unicode-safe helper tests -------------------------------------

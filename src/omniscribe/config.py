@@ -25,6 +25,7 @@ _VALID_OUTPUT_FORMATS: frozenset[str] = frozenset({"json", "txt", "srt", "md"})
 # RapidOCR's ModelType enum members lowercase; unknown values are rejected by
 # the field_validator.
 _VALID_MODEL_TYPES: frozenset[str] = frozenset({"mobile", "server"})
+_VALID_DET_LANGS: frozenset[str] = frozenset({"en", "ch", "multi"})  # rapidocr LangDet values
 
 # Case-insensitive alias map for ocr_{det,rec}_ocr_version.
 # Keys are the lowercased canonical form; values are what RapidOCR's
@@ -85,6 +86,13 @@ class OmniScribeConfig(BaseSettings):
     ocr_det_ocr_version: str | None = None
     ocr_rec_model_type: str | None = None
     ocr_rec_ocr_version: str | None = None
+    # Sprint 13 — optional detection-language override (None = default path:
+    # latin-script → EN, i.e. ``en_PP-OCRv3_det_mobile``). Set to ``"multi"`` to
+    # reach ``multi_PP-OCRv3_det_mobile`` (the multilingual detector) for
+    # latin-script text, or ``"ch"`` for the chinese detector. rapidocr's
+    # ``LangDet`` ships only {en, ch, multi}; server/v5 still force CH (no
+    # non-ch det model ships for those variants).
+    ocr_det_lang: str | None = None
 
     # ── LLM cleanup ──────────────────────────────────────
     # Opt-in per-segment OCR-artefact cleanup via a local Ollama model.
@@ -286,6 +294,23 @@ class OmniScribeConfig(BaseSettings):
             allowed = ", ".join(sorted(_OCR_VERSION_CANONICAL))
             raise ValueError(f"ocr_version must be one of: {allowed}; got {v!r}")
         return canonical
+
+    @field_validator("ocr_det_lang", mode="after")
+    @classmethod
+    def _validate_det_lang(cls, v: str | None) -> str | None:
+        """Normalise and validate the detection-language override.
+
+        Accepts ``None`` (passthrough = existing latin-script → EN default).
+        Lowercases the value, then checks it against rapidocr's ``LangDet``
+        values (``_VALID_DET_LANGS``). Return is the lowercased canonical form.
+        """
+        if v is None:
+            return None
+        lowered = v.lower()
+        if lowered not in _VALID_DET_LANGS:
+            allowed = ", ".join(sorted(_VALID_DET_LANGS))
+            raise ValueError(f"ocr_det_lang must be one of: {allowed}; got {v!r}")
+        return lowered
 
     @field_validator("merge_similarity_threshold", mode="after")
     @classmethod
