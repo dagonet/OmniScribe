@@ -44,6 +44,9 @@ htmlcov/
 .ruff_cache/
 pytest-of-*/
 
+# Green-CI gate artifact (machine/sha-specific, written by hooks/run-gate.sh)
+.gate/
+
 # Claude Code - machine-specific files
 CLAUDE.local.md
 .claude/.mcp.json

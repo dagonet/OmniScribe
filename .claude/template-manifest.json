@@ -160,6 +160,12 @@
       "localHash": "cc7cc0fd5aee1d7279acb5aae706f9c04fbc260f60c4f8bca9d3e6085a1f1548",
       "locallyModified": true
     },
+    "hooks/run-gate.sh": {
+      "templateHash": "4b710bb006cc242a8a4465b205f7c696dd7c66da656156930077657c174ba4f5",
+      "templateRawHash": "4b710bb006cc242a8a4465b205f7c696dd7c66da656156930077657c174ba4f5",
+      "localHash": "4b710bb006cc242a8a4465b205f7c696dd7c66da656156930077657c174ba4f5",
+      "locallyModified": false
+    },
     "hooks/tier-before-coder.sh": {
       "templateHash": "a4b06c0085a1ed142fba596b55217cf8eb83ebbba73f5c80a8d6867446750c13",
       "templateRawHash": "a4b06c0085a1ed142fba596b55217cf8eb83ebbba73f5c80a8d6867446750c13",

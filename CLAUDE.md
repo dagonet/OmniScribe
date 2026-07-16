@@ -269,12 +269,13 @@ Discard freely:
 ## Quick Start
 
 ```bash
-uv run pytest               # Build the project
-uv run pytest                # Run tests
-uv run ruff format .              # Format code
-uv run ruff check .                # Lint code
+uv sync                     # Build: install/sync the environment
+uv run pytest               # Run tests
+uv run ruff format .        # Format code
+uv run ruff check .         # Lint code
+bash hooks/run-gate.sh      # Green-CI gate (format-check + lint + coverage) → .gate/last-pass.json
 ```
 
-> Replace placeholders above with your project's actual commands from `PROJECT_CONTEXT.md`.
+> Full command reference: `PROJECT_CONTEXT.md`.
 
 ---

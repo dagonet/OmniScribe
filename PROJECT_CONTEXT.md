@@ -8,15 +8,15 @@
 
 ## Build System
 
-- **Build Command**: uv run pytest
+- **Build Command**: uv sync
 - **Test Command**: uv run pytest
 - **Format Command**: uv run ruff format .
 - **Lint Command**: uv run ruff check .
-- **Gate Command**: {{GATE_COMMAND}}
+- **Gate Command**: uv run ruff format --check . && uv run ruff check . && uv run pytest --cov=omniscribe --cov-fail-under=95
 
 ## Paths
 
-- **Source Root**: src/  <!-- or omniscribe/ — adjust to project layout -->
+- **Source Root**: src/
 - **Test Root**: tests/
 - **Worktree Base**: g:/git/.worktrees
 - **Log Path**: logs/
