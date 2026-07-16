@@ -161,7 +161,7 @@ omniscribe serve --host 127.0.0.1 --port 9000
 ```bash
 # Health check
 curl http://127.0.0.1:8000/healthz
-# {"status":"ok","version":"0.2.0"}
+# {"status":"ok","version":"..."}   # reports the installed omniscribe package version
 
 # Submit a job
 curl -X POST http://127.0.0.1:8000/jobs \
@@ -204,8 +204,11 @@ localhost or use a reverse proxy with authentication.
 ## Known Limitations
 
 OmniScribe is in active development (alpha). The pipeline produces a usable
-combined transcript on most short-form videos, but two areas are known to
-produce noisy or under-recalled output:
+combined transcript on most short-form videos. The most visible current
+constraint is documented below; the full set of tracked limitations and
+planned improvements lives in [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md)
+under **Phase 6 — Advanced Features** (single source of truth for what is
+being worked on).
 
 ### OCR noise on text-heavy backgrounds
 
@@ -232,7 +235,7 @@ segments. The noise sits alongside them.
 - Tune `OMNI_OCR_MIN_CONFIDENCE` (default `0.6`) higher to suppress
   low-confidence partial detections, at the cost of also missing some real
   text.
-- The `OMNI_OCR_DET_LIMIT_SIDE_LEN` / `OMNI_OCR_DET_THRESH` / `OMNI_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays). Sprint 9.5 adds model-variant overrides (`OMNI_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}`) for switching to higher-capacity models (server / PP-OCRv5), with an automatic CH-det-lang override when those variants are selected (registry limitation — only `ch_*` det models ship for server/v5).
+- The `OMNI_OCR_DET_LIMIT_SIDE_LEN` / `OMNI_OCR_DET_THRESH` / `OMNI_OCR_DET_BOX_THRESH` env overrides expose RapidOCR's detection-model knobs for experimenting with dense-small-text content (defaults tuned for caption overlays). Model-variant overrides (`OMNI_OCR_{DET,REC}_{MODEL_TYPE,OCR_VERSION}`) switch to higher-capacity models (server / PP-OCRv5), with an automatic CH-det-lang override when those variants are selected (registry limitation — only `ch_*` det models ship for server/v5).
 
 ## Docker
 

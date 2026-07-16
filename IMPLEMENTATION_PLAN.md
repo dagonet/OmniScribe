@@ -9,63 +9,15 @@ Dozens of tools transcribe the *spoken audio* of videos (ElevenLabs, Descript, T
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    INPUT LAYER                       │
-│  Video URL (TikTok, YouTube, Reels, Shorts, ...)    │
-│  ──or──  Local video file (.mp4/.mov/.webm)         │
-└──────────────────────┬──────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│               VIDEO ACQUISITION                      │
-│  yt-dlp (download + metadata extraction)             │
-│  Platform auto-detection                             │
-│  Output: video file + metadata JSON                  │
-└──────────────────────┬──────────────────────────────┘
-                       │
-              ┌────────┴────────┐
-              ▼                 ▼
-┌──────────────────┐  ┌──────────────────────┐
-│   AUDIO TRACK    │  │    VIDEO FRAMES      │
-│   Extraction     │  │    Extraction        │
-│   (ffmpeg)       │  │    (ffmpeg/OpenCV)   │
-└────────┬─────────┘  └──────────┬───────────┘
-         │                       │
-         ▼                       ▼
-┌──────────────────┐  ┌──────────────────────┐
-│   ASR ENGINE     │  │    OCR ENGINE        │
-│   faster-whisper │  │    RapidOCR          │
-│   large-v3-turbo │  │    (GPU-accelerated) │
-│   (GPU, FP16)    │  │                      │
-│                  │  │  Smart frame sampling│
-│  Output:         │  │  + deduplication     │
-│  Timestamped     │  │  + UI filtering      │
-│  speech segments │  │    (per platform)    │
-│                  │  │                      │
-│                  │  │  Output:             │
-│                  │  │  Timestamped         │
-│                  │  │  on-screen text      │
-└────────┬─────────┘  └──────────┬───────────┘
-         │                       │
-         └───────────┬───────────┘
-                     ▼
-┌─────────────────────────────────────────────────────┐
-│                 MERGE ENGINE                         │
-│  - Align ASR + OCR segments by timestamp             │
-│  - Deduplicate (spoken captions ≈ on-screen text)    │
-│  - Classify text source: [SPEECH] vs [ON-SCREEN]     │
-│  - Optional: LLM post-processing for cleanup         │
-└──────────────────────┬──────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────┐
-│                 OUTPUT LAYER                         │
-│  - Plain text transcript (.txt)                      │
-│  - Timestamped transcript (.json)                    │
-│  - SRT/VTT subtitle file                             │
-│  - Markdown with source annotations                  │
-└─────────────────────────────────────────────────────┘
+Input (video URL or local file)
+  → Acquisition            yt-dlp download + platform auto-detect (photo posts via gallery-dl)
+  → Audio (ffmpeg)         → ASR: faster-whisper large-v3-turbo → timestamped speech segments
+  → Frames (OpenCV)        → OCR: RapidOCR, scene-sampled + cross-frame dedup + per-platform UI filter → on-screen text
+  → Merge engine           timestamp-align ASR+OCR, fuzzy dedup, classify [SPEECH] / [ON-SCREEN] / [BOTH], optional LLM cleanup
+  → Output                 JSON / TXT / SRT / Markdown
 ```
+
+> **Full pipeline diagram** — routing, filters, layering rules, and extension seams — lives in **`docs/architecture.md`** (the single source of truth for the flow; kept in sync with the code). This is a one-glance summary only.
 
 ## Tech Stack
 
@@ -152,7 +104,7 @@ omniscribe/
 ├── scripts/
 │   └── eval_ocr.py             # Standalone eval harness (video or --images vs ground truth)
 │
-├── tests/                      # 27 test modules mirroring src (541 tests)
+├── tests/                      # test modules mirroring src (578 unit tests + opt-in eval suite)
 │   └── fixtures/eval/          # example-gt.json tracked; media + real GT gitignored
 │
 └── docs/
@@ -326,14 +278,14 @@ Merged output:
 | Phase 5 — Polish & extensibility | Complete | Sprints 5.1 (PR #6, `530902f`, doc trust-repair), 5.2 (PR #7, `db3e4b1`, CI/CD), 5.3 (PR #8, `3605a19`, doc/code drift), 5.4 (PR #26, `bf4ef74`, batch processing) merged; LLM cleanup shipped via Sprints 6.1 (PR #12), 6.2 (PR #14), and `681fa03` robustness; **Docker** shipped v0.1.2 |
 | Hardening & OCR-quality campaign (post-Phase-5) | Complete | Windows GPU without system CUDA (Sprints 7.2–7.4, v0.1.1); playlist/channel batch expansion (Sprint 8.1, v0.1.2); OCR language auto-resolution + caption-mask toggles (v0.1.3); eval-matching + aggregation fixes (Sprints 9.2–9.3, v0.1.4–v0.1.5); det/model diagnostic knobs (Sprints 9.4–9.5, v0.1.6); **photo-mode-native pipeline** + spatial dedup (Sprints 9.6–9.7, v0.1.7) — three-sample eval matrix at recall 1.0; Docker photo extra (v0.1.8) |
 | Health pass (post-v0.2.1) | Complete | **Architecture refactor** (Sprints 10.1, PRs #62–#65, v0.2.2): `omniscribe.pipeline` extraction, `OcrEngine` protocol, `write_transcript` registry, `docs/architecture+configuration+adding-platforms.md`; **coverage gate** (Sprint 10.2, PR #67, v0.2.3): CI enforces ≥95%, total 98.40%; **eval-samples infrastructure** (Sprint 10.3, PR #69, v0.2.4): manifest + fetch script + opt-in `eval` regression suite (sample-3 recall 1.0 re-verified live post-refactor) |
-| Phase 6 — Advanced features | In progress | **Speech translation** shipped v0.1.9 (Sprint 9.9, PR #53); **API mode** shipped v0.2.0 (Sprint 9.10, PR #55); playlist/channel support shipped earlier (Sprint 8.1, v0.1.2); remaining items open — see list below |
+| Phase 6 — Advanced features | Partially complete | **Speech translation** shipped v0.1.9 (Sprint 9.9, PR #53); **API mode** shipped v0.2.0 (Sprint 9.10, PR #55); playlist/channel support shipped earlier (Sprint 8.1, v0.1.2); remaining items open — see list below |
 
 ### Phase 6: Advanced Features
 
 Shipped:
 
 - **Playlist/channel support** (shipped Sprint 8.1, v0.1.2) — Transcribe all videos from a creator or playlist via `transcribe-many` auto-expansion
-- **Speech translation** (shipped Sprint 9.9, v0.1.9) — `--translate` / `OMNI_WHISPER_TASK` use Whisper's native `task=translate` (any source language → English speech). General any-to-any transcript translation remains open (would ride the existing Ollama `[llm]` plumbing)
+- **Speech translation** (shipped Sprint 9.9, v0.1.9) — `--translate` / `OMNI_WHISPER_TASK` use Whisper's native `task=translate` (any source language → English speech). General any-to-any transcript translation remains open — see the backlog item below
 - **API mode** (shipped Sprint 9.10, v0.2.0) — `omniscribe serve` FastAPI job server (`[api]` extra); v1 is local-only (no auth/persistence)
 
 Still open, not scheduled:
@@ -346,13 +298,27 @@ Still open, not scheduled:
 - **YouTube chapters mode** — segment the transcript by detected chapters on long videos; yt-dlp already exposes chapter metadata (T2-T3)
 - **v3-EN-det retirement measurement** — the default "EN det" OCR model is actually a PP-OCRv3 mobile model; a GPU A/B (CH-v4 det on eval samples 2/3) could yield free quality and retire the v3 routing (T2, one GPU session)
 - **Instagram carousel support** — extend `is_photo_post` for IG carousels; gallery-dl already handles the extractor, the whole photo-mode-native pipeline is reused (T2-T3)
-- **API v1 hardening** — deliberate v1 non-goals, revisit on demand: auth, job persistence, cancellation, and `JobRequest` option parity with the CLI (`ui_filter`/`scene_change`/LLM-cleanup fields were an explicit Sprint 9.11 carveout). Groundwork exists since v0.2.2: `errors.py` documents the intended `AcquireError`/`TranscriptionError`/`OcrError` hierarchy to implement alongside API error-kind surfacing
+- **API v1 hardening** — deliberate v1 non-goals, revisit on demand: auth, job persistence, cancellation, and `JobRequest` option parity with the CLI (`ui_filter`/`scene_change`/LLM-cleanup fields were an explicit Sprint 9.11 carveout). Groundwork exists since v0.2.2: `errors.py` documents the intended `AcquireError`/`TranscriptionError`/`OcrError` hierarchy to implement alongside API error-kind surfacing. Additional v1 limitations to revisit here (documented in README "v1 Limitations" + `api/server.py`): single-worker executor (one GPU → one job at a time); JSON-output-only (ignores the CLI `--format` flag); poll-based status only (no SSE / webhooks); no file-upload endpoint (URLs / local paths only)
 - **Vision-LLM OCR backend** — alternative engine (e.g. Qwen2.5-VL, Llama 3.2 Vision) for stylized text; promoted from Open Questions now that the extension seam exists: implement the `OcrEngine` protocol (`ocr/protocol.py`, v0.2.2 — structural, no inheritance needed). Needs new eval samples first — the current three-sample matrix is already at recall 1.0, so this only pays on harder content classes
 - **Graceful audio-less video handling + download format hardening** — pipeline currently dies with raw "ffmpeg failed: Error opening output files: Invalid argument" when a video has no audio stream (extract_audio); TikTok bytevc1/1080p format variants download video-only despite yt-dlp metadata claiming aac. Wanted: skip ASR channel gracefully (like photo posts without audio) + `download_video` format selection that verifies/repairs audio (probe + fallback format)
 - **Frequency filter vs persistent real content** — on long videos with a persistent title banner (eval sample-6, 8:51), `filter_by_frequency` drops it as UI chrome (funnel 172→76 segments); persistent REAL content is indistinguishable from chrome by frequency alone. Needs scene-aware or position-aware exemption design. Evidence: eval sample-6 required-recall capped ~0.6 with title unmatched
 - **OCR language resolution for speech-less posts** — `ocr_language="auto"` resolves via the ASR-detected language, but music-only photo posts give Whisper nothing to detect (defaults to "en"), so German text gets the EN rec model and loses umlauts (measured: full-pipeline run of eval sample-5 emitted "WORUBER DU DIR" / "WIRD VOLLIG VERGESSEN SEIN"; the eval harness scores 1.0 only because it passes the GT language directly). Wanted: language fallback that doesn't depend on speech — e.g. script/diacritic detection on an OCR sample, platform/user hint, or config default per run
-- **Template sync** *(dev-infra)* — pull the current claude-code-toolkit template to restore `hooks/run-gate.sh` (referenced by CLAUDE.md's gate rule but absent from this repo)
+- **OCR noise on text-heavy / busy backgrounds** — dense static backgrounds (diplomas or certificates on a wall, on-set documents, heavy channel-branding overlays) produce per-frame detections that vary slightly frame-to-frame, defeat cross-frame dedup, and survive the UI frequency filter. This is the inverse of the persistent-real-content item above (noise that should be dropped but isn't, vs. real content wrongly dropped). Documented in README "Known Limitations" with `--no-ocr` / `jq` / `OMNI_OCR_MIN_CONFIDENCE` workarounds; a real fix needs stability-aware detection (drop text whose bbox/geometry jitters across frames)
+- **Strict-`<` `[BOTH]` merge boundary** — `merge_channels` merges speech↔OCR only within a 2-frame temporal overlap window; on-screen text appearing just before or just after the overlapping speech is emitted as separate `[ON-SCREEN]` rather than folded into `[BOTH]` (documented in CHANGELOG v0.1.0 known limitations). Wanted: a tolerance/grace window on the merge boundary
+- **Adaptive scene-change thresholding** — the OCR frame sampler uses a static scene-change threshold; a percentile-over-window (adaptive) threshold would sample more robustly across content with varying motion (deferred in `docs/plans/phase-2-5-scene-change.md`)
+- **Per-language / per-platform LLM-cleanup prompts** — the opt-in LLM cleanup uses a single English-default prompt; non-English content and platform-specific artifacts would benefit from templated prompts (deferred in `docs/plans/sprint-6-2-asr-punctuation-cleanup.md`)
+- **General any-to-any transcript translation** — beyond Whisper's native `task=translate` (source→English only): translate a finished transcript between arbitrary language pairs. Would ride the existing Ollama `[llm]` plumbing (promoted from the "Speech translation" shipped note above)
+- **Non-profiled-platform UI filtering** — videos from platforms without a profile transcribe correctly but receive only baseline frequency/pattern filtering, no platform-specific exclusion zones (README "Supported Platforms"). Broader than the X/Facebook profile item above; a generic learned-chrome-zone heuristic would cover the long tail
+- **RapidOCR det-model registry gap** — the model registry ships only `ch_*` detection models for the `server` / PP-OCRv5 variants, so those higher-capacity variants force `det_lang=CH` (`ocr/rapid_ocr.py:230`); a non-CH server/v5 det model would remove the auto-override
+- **Batch-processing enhancements** *(umbrella — sprint-5-4 / sprint-8-1 deferrals, all deliberate v1 carveouts)* — `transcribe-many` is intentionally simple; revisit on demand:
+  - parallel execution (currently sequential — GPU-contention rationale) and per-item config override (all items inherit one run-level `--language`/format)
+  - cross-format dispatch (one format per run; json+txt+md needs three passes)
+  - `--state-file` override, `--no-clobber` (existing outputs silently overwritten), `--skip-failed` (failed items re-attempted every run), and transient-vs-fatal error categorization / auto-retry
+  - completion notification / webhooks; `#`-comment-prefix support in the URL list
+  - lockfile for concurrent runs against the same `--output-dir` (state-file race); Windows `MAX_PATH` robustness for deep output dirs; large-list state-write cost (full O(n) rewrite per item for >1k URLs)
+  - channel-of-playlists edge case (a `transcribe-many` entry that resolves to a playlist of playlists — documented as an unverified possible failure in `docs/plans/sprint-8-1-playlist-support.md`)
 - **Docker CI build job** *(dev-infra)* — add a build-only GitHub Actions job for the Dockerfile; image changes are currently verified by inspection only
+- **Upstream `run-gate.sh` into the toolkit python variant** *(dev-infra)* — Sprint 12 restored `hooks/run-gate.sh` from the local toolkit checkout and registered it in the template manifest; the residual task is to add it to the claude-code-toolkit **python variant's** tracked file set so future `/sync-template` runs carry it automatically (it currently lives only in the toolkit's own root `hooks/`)
 
 ## Configuration Model
 

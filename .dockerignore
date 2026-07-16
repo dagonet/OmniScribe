@@ -6,13 +6,20 @@
 # CI/CD
 .github/
 
-# Docs
+# Docs & dev-only governance (not needed in the runtime image)
 docs/
 CHANGELOG.md
 LICENSE
 AGENT_TEAM.md
 PROJECT_CONTEXT.md
 PROJECT_STATE.md
+IMPLEMENTATION_PLAN.md
+CONTRIBUTING.md
+VERIFICATION_PLAYBOOK.md
+CLAUDE.md
+CLAUDE.local.md
+hooks/
+.gate/
 !README.md
 
 # Tests
