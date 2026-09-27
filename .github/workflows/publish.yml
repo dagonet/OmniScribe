@@ -56,11 +56,17 @@ jobs:
       - name: Check distributions with twine
         run: uvx twine check --strict dist/*
 
+      # This artifact only hands dist/ from the build job to later jobs in this
+      # same run. The artifact storage quota is per-account and shared across
+      # every repo, so it should not use GitHub's 90-day default. 3 days (not
+      # 1) leaves a window to re-run failed jobs on a later day without the
+      # artifact having expired.
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
+          retention-days: 3
 
   publish-testpypi:
     needs: build
