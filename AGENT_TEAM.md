@@ -44,13 +44,13 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 ### Product Owner (PO)
 
 - Primary interface with the human stakeholder; maintains/prioritizes the backlog. Spawns the **Architect** for new features; reviews/publishes specs; plans sprints; monitors progress, handles escalations; writes a session summary after each sprint.
-- **T1 delegated fixes**: trivial changes (< 10 lines, style/config, no logic) get ONE coder with the brief inline — no plan file needed. **The PO NEVER edits code, at any tier.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `AGENT_TEAM.md` — enforced by `hooks/enforce-delegation.sh`.
+- **T1 delegated fixes** (see Tiered Sprint Model) — brief inline, no plan file needed. **The PO NEVER edits code, at any tier.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `AGENT_TEAM.md` — enforced by `hooks/enforce-delegation.sh`.
 - **Never reviews code inline** — `code-reviewer` is spawned T2+; T1 relies on the coder's gate run.
-- **Read discipline**: Read/Grep only for targeted verification (1-2 files) and orchestration files; open-ended exploration goes to **Explore** (haiku/`effort: low` — never pass `model` in the Agent call).
+- **Read discipline**: Read/Grep only for targeted verification (1-2 files) and orchestration files; open-ended exploration goes to **Explore** (see Model & Effort Policy).
 - **Never runs builds or tests** — coders gate, tester verifies, `ops` handles env/tool work; PO verifies via `.gate/last-pass.json`.
 - Closes tasks after merge; does **NOT** block the merge pipeline.
 - **Open Brain context mediation**: search before spawning, include findings, capture insights after (*Open Brain Context for Agents*).
-- **Spawn-prompt skill injection**: look up `subagent_type` in the Spawn-Prompt Binding Table and include a `## Required Skills` block using the copy-paste snippets verbatim (`hooks/require-skills-block.sh` enforces this — exits 2 without it). Omit for `code-reviewer`.
+- **Spawn-prompt skill injection**: look up `subagent_type` in the Spawn-Prompt Binding Table and include a `## Required Skills` block verbatim (`hooks/require-skills-block.sh` enforces this). Omit for `code-reviewer`.
 
 ## Model & Effort Policy
 
@@ -189,14 +189,16 @@ See `PROJECT_CONTEXT.md` for the worktree base path; see Mode Behavior Table for
 
 - Each worktree is created from `main` at assignment time; each developer works **only** in its assigned worktree.
 - Max parallel workstreams as specified in `PROJECT_CONTEXT.md`. Architect **must** flag scope conflicts before parallel work begins.
-- On completion (PR merged), the developer removes the worktree and deletes the branch.
+- Completion cleanup (remove worktree, delete branch) is Merge Protocol step 6.
 - `isolation: worktree` cuts from **`origin/main`**, not local `main` or the session branch — a worktree coder lags until an unlanded session PR lands. PO check: `git rev-list --count <base>..<session-branch>` = 0, and `git cat-file -e <base>:<path>` succeeds for every file the brief names. Untracked files are never in the worktree — hand the coder an absolute path.
+
+**Background jobs outlive the agent that spawned them:** A backgrounded job is not scoped to the agent that started it — a `sleep`-and-act cleanup deleted a live lock an hour after its agent handed back (MM-Agent, 2026-09-22), and a stopped gate's children outlived `TaskStop`, kill denied to the noticing agent (this toolkit, same day). Rules: cleanup belongs in the agent's OWN final turn or is handed to a NAMED successor; a successor that finds a resource already released SAYS so instead of claiming it; the noticing agent may be denied the kill, so report the pid and command line — never assume it stopped.
 
 ---
 
 ## Merge Protocol
 
-After review and testing pass, the developer executes the merge — git/GitHub MCP tools are listed explicitly in its `tools:` frontmatter (`coder`, `<lang>-coder`, `general-purpose`). Agents without `Bash` (`architect`) return work to the PO for the git/GitHub I/O.
+After review and testing pass, the developer executes the merge — git/GitHub MCP tools are listed explicitly in its `tools:` frontmatter (`coder`, `<lang>-coder`, `general-purpose`).
 
 ### Steps (Developer-executed)
 
@@ -218,7 +220,7 @@ After review and testing pass, the developer executes the merge — git/GitHub M
 
 ### Merge Ordering
 
-**First-ready, first-merge** — each subsequent merge rebases onto the updated main first. The PO sends merge-go-ahead messages; developers wait for them.
+**First-ready, first-merge** — each subsequent merge rebases onto the updated main first.
 
 ---
 
@@ -228,7 +230,7 @@ After review and testing pass, the developer executes the merge — git/GitHub M
 
 Current models need the whole task in the prompt, not a staged planning ritual. Every spawn states: **Goal** (1-2 sentences), **Constraints**, **Acceptance criteria**, **Files in scope** (in and explicitly out), **Definition of done** (tests + `bash hooks/run-gate.sh`).
 
-An agent that has to go looking for any of the five is under-briefed — a prompt defect, not an agent failure. The `## Required Skills` block stays part of every bound spawn (`hooks/require-skills-block.sh`).
+An agent that has to go looking for any of the five is under-briefed — a prompt defect, not an agent failure.
 
 **Plan files are optional** — write one in `docs/plans/` when work spans sessions or several workstreams need a shared reference; nothing blocks a spawn on one, and no hook parses a literal in it.
 
@@ -239,16 +241,16 @@ An agent that has to go looking for any of the five is under-briefed — a promp
 ## Rules
 
 1. **No direct pushes to main** — everything through PRs, including T1 (one coder: branch -> fix -> gate -> PR -> self-merge). No exceptions.
-2. **One task per developer, one worktree** — no multitasking, no writes outside the assigned worktree.
-3. **Max parallel workstreams** as specified in `PROJECT_CONTEXT.md`.
+2. **One task per developer, one worktree** — see Git Worktrees → Rules.
+3. **Max parallel workstreams** — see Git Worktrees → Rules.
 4. **Architect reviews BEFORE development** (T4).
-5. **Developers own the merge and its sequencing** — wait for the PO's go-ahead. Agents without `Bash` (`architect`) return work to the PO. Template syncs are PO-run.
+5. **Developers own the merge and its sequencing** — wait for the PO's go-ahead. Template syncs are PO-run.
 6. **Post-rebase verification required** — rebuild + retest before merge.
-7. **Max 3 fix cycles per task** — then PO selects (a) scope reduction, (b) architect re-design, or (c) human escalation.
+7. **Max 3 fix cycles per task** — then Escalation Protocol applies.
 8. **Workstream agents are ephemeral** — shut down after their phase.
 9. **Permission propagation** — requested once at sprint start; agents spawned with `mode: bypassPermissions`.
-10. **Mode consistency** — the sprint's task source determines the mode; T1/T2 hotfixes may bypass mode formalities but still run the gate.
-11. **Brief discipline** — every spawn carries the full task brief; tier caps still apply, plan file optional at every tier.
+10. **Mode consistency** — see Mode Behavior Table; T1/T2 hotfixes may bypass mode formalities but still run the gate.
+11. **Brief discipline** — see Task Brief Upfront.
 
 ---
 

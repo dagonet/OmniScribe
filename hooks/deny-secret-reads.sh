@@ -3,6 +3,12 @@
 #
 # Matcher: Read|Bash
 #
+# v4.1.2: this hook now calls cmd_join_continuations (hooks/lib/json.sh,
+# already sourced below) on the Bash arm, so `awk` joins this hook's minimum
+# PATH tool set alongside sh, sed, grep, tr — no test-hooks.sh fixture pins a
+# restricted PATH for this hook specifically (see the task 1 report); noted
+# here instead, per the brief's own fallback.
+#
 # WHY A HOOK AND NOT A DENY RULE (v3.0.3, queue item 28, measured from a
 # consumer screenshot 2026-09-04). Six `Read(.env…)` entries used to sit in
 # `permissions.deny` of every template `.claude/settings.json`. Claude Code
@@ -167,6 +173,14 @@ case "$DSR_TOOL" in
     ;;
   Bash|PowerShell)
     DSR_CMD=$(json_get "$DSR_JSON" tool_input.command)
+    # v4.1.2 spec §1: this hook never sourced git-cmd.sh, so the continuation
+    # join lives in json.sh (already sourced above, fail-closed). Without it
+    # `cat .e\<LF>nv` read as two tokens and the .env read was ALLOWED.
+    # Raw-text fallback: an empty DSR_CMD hits `[ -n "$DSR_CMD" ] || exit 0`
+    # (:170) -- a failed join must never turn into allow-everything.
+    if [ -n "$DSR_CMD" ]; then
+      _dsr_j=$(printf '%s' "$DSR_CMD" | cmd_join_continuations) && [ -n "$_dsr_j" ] && DSR_CMD="$_dsr_j"
+    fi
     [ -n "$DSR_CMD" ] || exit 0
     # Split on whitespace and on the shell operators that begin a new command,
     # then judge tokens. Quotes are stripped so `grep KEY "$PWD/.env.local"`
