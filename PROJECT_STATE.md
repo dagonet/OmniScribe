@@ -15,7 +15,7 @@ _No active sprint._
 
 ## Toolkit
 
-**claude-code-toolkit v4.1.1** (`eef42779`), synced 2026-09-23 — **recorded in the same PR as the sync**. Manifest is **v4**: `CLAUDE.md` is template-owned and byte-identical, project content lives in `.claude/project-instructions.md`, agent tool extensions in `.claude/agent-grants.json`. `template_verify` post_commit: **24 PASS, 0 FAIL, 0 SKIP, 7 INFO**.
+**claude-code-toolkit v4.2.0** (`d95cf57c`), synced 2026-09-30 — **recorded in the same PR as the sync**. v4.1.2 was skipped as a separate sync; its nine template changes arrived in this one (v4.2.0 itself changed no template). Manifest is **v4**: `CLAUDE.md` is template-owned and byte-identical, project content lives in `.claude/project-instructions.md`, agent tool extensions in `.claude/agent-grants.json`. `template_verify` post_commit: **24 PASS, 0 FAIL, 0 SKIP, 7 INFO**.
 
 > **Record the sync in the same PR as the sync.** This line went stale three times — after #142/#143, #144/#145, and #147/#148 — because the sync and its record were separate commits. `template_verify` cannot catch it: `PROJECT_STATE.md` is `once`-class project prose and sits outside every one of its checks. Writing the habit down was not enough on its own; **v4.1.0 is the first sync where the record ships in the same commit**, which is the only thing that has ever actually closed it.
 
@@ -36,7 +36,9 @@ Sync history since v3.0.0:
 | v4.0.3 | `150627de` | #147 | Guard hooks read a script argument's first 16 KB; expired gate artifact accepted within 24 h on tree + environment identity |
 | v4.1.0 | `038f247f` | #149 | Manifest v3 → v4; `CLAUDE.md` becomes template-owned and byte-identical; PROJECT-CUSTOM region moves to `.claude/project-instructions.md`; `agent-grants.json`; new `deny-claude-md-writes.sh` hook. Sync **and** record in one PR |
 | — | — | #150 | Marked three `PROJECT_STATE.md` statements superseded by v4.1.0 |
-| v4.1.1 | `eef42779` | — | v4.1.0 rollout patch: four enforcement scripts updated; the `#20` dropped-`reason` repair applied by hand |
+| v4.1.1 | `eef42779` | #151 | v4.1.0 rollout patch: four enforcement scripts updated; the `#20` dropped-`reason` repair applied by hand |
+| — | — | #152–#154 | Worktree base moved under `g:/git/.worktrees/panoscribe`; `dist` artifact retention 3 days; `.claude/worktrees/` gitignored; always-on gate-artifact rule corrected |
+| v4.2.0 | `d95cf57c` | — | Carries v4.1.2's nine template changes (8 hook scripts + `AGENT_TEAM.md`): backslash-continuation join, whole-line comment strip before the verb scan, filesystem case-fold probe, byte-measured `cmd_len`, widened gate fingerprint. No conflicts, no local edits, no migration; the hand-restored `reason` annotation survived finalize |
 
 ### v4.1.1 — the rollout patch, and one repair that no sync could do
 

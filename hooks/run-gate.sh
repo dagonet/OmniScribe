@@ -164,7 +164,7 @@ gc_sha256() {
   fi
 }
 gc_gate_env() {
-  local top="$1" verbose="${2:-}" venv pyver nodever pyvenv_h dist_h out py_exe
+  local top="$1" verbose="${2:-}" venv pyver nodever pyvenv_h dist_h out py_exe pyvenv_pfx
   [ -n "$top" ] || return 1
   venv="$top/server/.venv"
 
@@ -187,9 +187,31 @@ gc_gate_env() {
       py_exe=""
     fi
   else
-    pyvenv_h=absent
+    # v4.1.2 (spec §3): no venv -> interpreter-PREFIX identity, self-described
+    # by the `sys:` prefix (the venv shape keeps its bare pyvenv.cfg hash, so
+    # every existing venv-repo artifact stays valid). `absent` ONLY when no
+    # interpreter resolves -- and then dist/py are absent too. The claim is
+    # one-directional: pyvenv=absent => dist/py absent; a present-but-broken
+    # venv reads pyvenv=<hash>|dist=absent|py=absent and the void still fires
+    # via dist/py -- do not "simplify" pyvenv to derive from the interpreter.
+    # Void rule unchanged; no-venv repos become ELIGIBLE (penumbra: a repo with
+    # system python could never earn the extension under v4.1.1).
     py_exe=$(command -v python3 2>/dev/null)
     [ -n "$py_exe" ] || py_exe=$(command -v python 2>/dev/null)
+    if [ -n "$py_exe" ]; then
+      # sys.stdout.write, not print: the hash covers sys.prefix's bytes
+      # exactly, with no trailing newline riding along -- and an interpreter
+      # that resolves but yields nothing (a transient failure) must read
+      # "absent" too, not sha256("") (a real, misleading hash of no input).
+      pyvenv_pfx=$("$py_exe" -c 'import sys; sys.stdout.write(sys.prefix)' 2>/dev/null)
+      if [ -n "$pyvenv_pfx" ]; then
+        pyvenv_h=$(printf '%s' "$pyvenv_pfx" | gc_sha256) && [ -n "$pyvenv_h" ] && pyvenv_h="sys:$pyvenv_h" || pyvenv_h=absent
+      else
+        pyvenv_h=absent
+      fi
+    else
+      pyvenv_h=absent
+    fi
   fi
 
   if [ -n "$py_exe" ]; then

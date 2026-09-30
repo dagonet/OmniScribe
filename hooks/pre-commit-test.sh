@@ -167,8 +167,13 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
   # matched_in_quoted as well.
   if [ "$1" = no-commit-segment ]; then
     _pn_noop="$_pn_gd/last-precommit-noop.$_pn_treeseg.json"
+    # v4.1.2: cmd_len is BYTES, locale-independent -- ${#GC_CMD} counted
+    # characters under a UTF-8 locale and bytes under C, so the skill's recipe
+    # (which counts bytes via the hook's own pipeline) disagreed with the
+    # record on any non-ASCII code line whenever the harness carried a UTF-8
+    # locale. A diagnostic field; bytes is the well-defined ruler.
     printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","kind":"no-commit-segment","gate_dir":"%s"}\n' \
-      "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "${#GC_CMD}" "$_pn_tool" \
+      "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "$(printf '%s' "$GC_CMD" | wc -c | tr -d ' ')" "$_pn_tool" \
       "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$_pn_gd" \
       > "$_pn_noop.tmp" 2>/dev/null && mv -f "$_pn_noop.tmp" "$_pn_noop" 2>/dev/null || return 0
     pct_prune "$_pn_gd"
@@ -184,7 +189,7 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
   # commit -m x`; see gc_seg_quoted in hooks/lib/git-cmd.sh.
   _pn_art="$_pn_gd/last-precommit.$_pn_treeseg.json"
   printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","matched_in_quoted":%s,"gate_dir":"%s"}\n' \
-    "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "${#GC_CMD}" "$_pn_tool" \
+    "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "$(printf '%s' "$GC_CMD" | wc -c | tr -d ' ')" "$_pn_tool" \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$PCT_QUOTED" "$_pn_gd" \
     > "$_pn_art.tmp" 2>/dev/null && mv -f "$_pn_art.tmp" "$_pn_art" 2>/dev/null || return 0
   pct_prune "$_pn_gd"
@@ -238,8 +243,8 @@ fi
 # so a `git commit` inside such a script is gated exactly as if typed. See
 # gc_script_body / gc_augmented_cmd in hooks/lib/git-cmd.sh for the 16 KB cap
 # and the depth-1/TOCTOU residuals. cmd_len in the diagnostic artifact below
-# reflects the augmented length on this path -- accepted, it is a diagnostic
-# field, not a gate.
+# reflects the augmented length, in BYTES, on this path -- accepted, it is a
+# diagnostic field, not a gate.
 GC_CMD="$(gc_augmented_cmd "$GC_CWD")"
 
 # Find the repo of the first `git commit` in the command line (if any).

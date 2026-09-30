@@ -311,6 +311,17 @@ gc_read_stdin() {
       # not have, and the case is not reachable from Claude Code, which always
       # sends a string. Revisit if a real payload ever shows otherwise.
       GC_CMD=$(json_get "$GC_JSON" tool_input.command)
+      # v4.1.2 spec §1: join backslash-newline continuations ONCE, here, before
+      # gc_protect_c_paths and before any reader -- gc_seg_raw, gc_segments,
+      # gc_seg_quoted, gc_augmented_cmd's walk and both guards' fast-exit greps
+      # all inherit joined text. A continuation between `gh pr` and `merge`
+      # fast-exited the merge gate before this line existed (measured).
+      # A FAILED join falls back to the RAW text (reviewer, plan round 1): an
+      # empty assignment would hit the guards' `[ -n ]` fast exits and allow
+      # everything -- v4.1.1's behaviour is the floor, never allow-all.
+      if [ -n "$GC_CMD" ]; then
+        _gc_j=$(printf '%s' "$GC_CMD" | cmd_join_continuations) && [ -n "$_gc_j" ] && GC_CMD="$_gc_j"
+      fi
       ;;
     *)
       GC_CMD=""
@@ -523,7 +534,14 @@ gc_script_body() {
   [ -n "$path" ] || return 0
   case "$path" in /*|[A-Za-z]:*) ;; *) path="$cwd/$path" ;; esac
   [ -f "$path" ] || return 0
-  head -c 16384 "$path" 2>/dev/null
+  # v4.1.2 #8: whole-line comments (first non-blank character `#`) are never
+  # commands, so they are stripped BEFORE the verb scan -- and only whole
+  # lines: `"${BR#refs/heads/}"` on a code line keeps its `#`. The
+  # continuation join runs on this output in gc_augmented_cmd, AFTER this
+  # strip (spec §0): bash does not continue a line inside a comment, so
+  # join-then-strip would merge `# note \<LF>git push origin main` into the
+  # comment and delete the push.
+  head -c 16384 "$path" 2>/dev/null | grep -v '^[[:space:]]*#'
 }
 
 # gc_augmented_cmd <cwd> -- GC_CMD, plus the body of every script segment
@@ -539,10 +557,13 @@ gc_script_body() {
 # walk does, or a script's `git merge`/`git push` passes the "no git token"
 # fast exit before the walk that would have caught it ever runs).
 gc_augmented_cmd() {
-  local cwd="$1" out="$GC_CMD" seg body
+  local cwd="$1" out="$GC_CMD" seg body _gc_bj
   while IFS= read -r seg; do
     [ -n "$seg" ] || continue
     body=$(gc_script_body "$seg" "$cwd")
+    if [ -n "$body" ]; then
+      _gc_bj=$(printf '%s' "$body" | cmd_join_continuations) && [ -n "$_gc_bj" ] && body="$_gc_bj"
+    fi
     [ -n "$body" ] && out="$out
 $body"
   done <<GC_AUG_SEGS
@@ -955,7 +976,9 @@ gc_sha256() {
 # the tree+env TTL extension in gate-before-merge.sh keys on. Concatenates
 # labelled contributors the server test suite's outcome can depend on, one
 # per line:
-#   pyvenv=<sha256 of server/.venv/pyvenv.cfg, or "absent">
+#   pyvenv=<sha256 of server/.venv/pyvenv.cfg when a venv is present; else
+#           sys:<sha256 of the resolved interpreter's sys.prefix>; "absent"
+#           only when no interpreter resolves>
 #   dist=<sha256 of the SORTED, newline-joined *.dist-info directory NAMES
 #         (basenames only) reported by `site.getsitepackages()` under the
 #         INTERPRETER THE GATE RUNS, or "absent" -- v4.1.1 (#15): the venv's
@@ -993,7 +1016,7 @@ gc_sha256() {
 # prints nothing -- callers must NOT treat that as an empty-string
 # fingerprint (two "cannot compute" states would then spuriously "match").
 gc_gate_env() {
-  local top="$1" verbose="${2:-}" venv pyver nodever pyvenv_h dist_h out py_exe
+  local top="$1" verbose="${2:-}" venv pyver nodever pyvenv_h dist_h out py_exe pyvenv_pfx
   [ -n "$top" ] || return 1
   venv="$top/server/.venv"
 
@@ -1016,9 +1039,31 @@ gc_gate_env() {
       py_exe=""
     fi
   else
-    pyvenv_h=absent
+    # v4.1.2 (spec §3): no venv -> interpreter-PREFIX identity, self-described
+    # by the `sys:` prefix (the venv shape keeps its bare pyvenv.cfg hash, so
+    # every existing venv-repo artifact stays valid). `absent` ONLY when no
+    # interpreter resolves -- and then dist/py are absent too. The claim is
+    # one-directional: pyvenv=absent => dist/py absent; a present-but-broken
+    # venv reads pyvenv=<hash>|dist=absent|py=absent and the void still fires
+    # via dist/py -- do not "simplify" pyvenv to derive from the interpreter.
+    # Void rule unchanged; no-venv repos become ELIGIBLE (penumbra: a repo with
+    # system python could never earn the extension under v4.1.1).
     py_exe=$(command -v python3 2>/dev/null)
     [ -n "$py_exe" ] || py_exe=$(command -v python 2>/dev/null)
+    if [ -n "$py_exe" ]; then
+      # sys.stdout.write, not print: the hash covers sys.prefix's bytes
+      # exactly, with no trailing newline riding along -- and an interpreter
+      # that resolves but yields nothing (a transient failure) must read
+      # "absent" too, not sha256("") (a real, misleading hash of no input).
+      pyvenv_pfx=$("$py_exe" -c 'import sys; sys.stdout.write(sys.prefix)' 2>/dev/null)
+      if [ -n "$pyvenv_pfx" ]; then
+        pyvenv_h=$(printf '%s' "$pyvenv_pfx" | gc_sha256) && [ -n "$pyvenv_h" ] && pyvenv_h="sys:$pyvenv_h" || pyvenv_h=absent
+      else
+        pyvenv_h=absent
+      fi
+    else
+      pyvenv_h=absent
+    fi
   fi
 
   if [ -n "$py_exe" ]; then

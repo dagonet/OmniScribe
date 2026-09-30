@@ -185,9 +185,17 @@ dcm_norm() {
     if [ "$dn2" != "$dn" ]; then dn="$dn2"; continue; fi
     break
   done
-  case "$(uname -s 2>/dev/null)" in
-    MINGW*|MSYS*|CYGWIN*) dn=$(printf '%s' "$dn" | tr 'A-Z' 'a-z') ;;
-  esac
+  # v4.1.2 #1: fold case when the FILESYSTEM is case-insensitive, probed once
+  # against `.git` at the working-tree root -- it always exists there (a
+  # directory in the main checkout, a file in a worktree), so `.GIT` resolving
+  # answers the question with no missing-target case, on Windows, macOS
+  # (APFS default) and a case-insensitive Linux mount alike. Replaces the
+  # MINGW/MSYS/CYGWIN uname enumeration, which gave macOS no fold at all.
+  # DCM_ROOT is computed once, above, from the payload cwd (falls back to the
+  # cwd itself outside a git repo, matching the old branch's residual there).
+  if [ -n "$DCM_ROOT" ] && [ -e "$DCM_ROOT/.GIT" ] && [ -e "$DCM_ROOT/.git" ]; then
+    dn=$(printf '%s' "$dn" | tr 'A-Z' 'a-z')
+  fi
   printf '%s' "$dn"
 }
 

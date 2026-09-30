@@ -159,7 +159,12 @@ process.stdin.on("end", () => {
     const stripHeredocs = (c) => c.replace(
       /(^|[^<])(<<-?[ \t]*(["\x27]?)([A-Za-z_][A-Za-z0-9_]*)\3[^\n]*\n)[\s\S]*?\n[ \t]*\4[ \t]*(?=\n|$)/g,
       "$1$2");
-    const cmd = stripHeredocs(input.command || "");
+    // v4.1.2 spec §1: join backslash-newline continuations (odd run only,
+    // optional CR) to EMPTY, as the shell does, after heredoc bodies are gone
+    // and before the split -- a continued `git add` list put hooks/run-gate.sh
+    // at a segment start and was falsely denied (yutraffic, measured).
+    // (No apostrophes here: the program is a single-quoted shell argument.)
+    const cmd = stripHeredocs(input.command || "").replace(/(^|[^\\])((?:\\\\)*)\\\r?\n/g, "$1$2");
 
     // v2.1.5: evaluate per SEGMENT, not against the whole command string.
     // A segment whose first token is git or gh is exempt (see header).
