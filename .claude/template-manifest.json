@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v4.2.0",
-  "template_commit": "d95cf57c3f46d2ded79a065e70aa2ba12fde6065",
+  "template_version": "v4.3.0",
+  "template_commit": "3a901fe397b656f28bd8611bb6deca0f35678aa4",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/agent-grants.json": {
@@ -59,7 +59,7 @@
       "ownership": "template"
     },
     ".claude/settings.json": {
-      "hash": "sha256:66f45cfd6b0059a02ee145fbc2b3e92701457f32b3e3711a08918c24aa3f82a3",
+      "hash": "sha256:35c8743b462073c8b19eedf649fc966b189efcecaa8a8c547ed0a891be924888",
       "ownership": "template"
     },
     ".editorconfig": {
@@ -73,7 +73,7 @@
       "ownership": "once"
     },
     "AGENT_TEAM.md": {
-      "hash": "sha256:e8ec4293e2a3a4e959f73b9247f113f4732adb8b5fd6e9985b23051408dd3956",
+      "hash": "sha256:d5193dc917c60000c8a71cff2c2b76440addba5a5395e2b69c99216055e22dde",
       "ownership": "template"
     },
     "CLAUDE.md": {
@@ -91,7 +91,7 @@
       "ownership": "once"
     },
     "hooks/agent-budget-warn.sh": {
-      "hash": "sha256:1456b2b90663f8b1582a0c94564e788f001e65f18e1f21ef76f4b93c1e583922",
+      "hash": "sha256:dabd89fdba03b6c1ec3d0f3e30b4a4ddb554b8a2407ab8198ca8672c160dcc0d",
       "ownership": "template"
     },
     "hooks/bash-output-guard.sh": {
@@ -100,6 +100,10 @@
     },
     "hooks/deny-claude-md-writes.sh": {
       "hash": "sha256:9fd0e254935bf1066fa4bebed4a6c8e06fef99f63565d4591f72b50af6c70b93",
+      "ownership": "template"
+    },
+    "hooks/deny-hang-shapes.sh": {
+      "hash": "sha256:366de2931dfa2ad01758cbf82535aaffccb9cd76a432906e7718512b76af9b15",
       "ownership": "template"
     },
     "hooks/deny-secret-reads.sh": {
@@ -119,11 +123,15 @@
       "ownership": "template"
     },
     "hooks/lib/git-cmd.sh": {
-      "hash": "sha256:189f585009344237ae047664a894fb5b2a9bd7f1f0040bdaaac905b08bc28c74",
+      "hash": "sha256:165aa6170aeae1336fbf4e25dfc302b973157bc273552b57de737bf08f062e7e",
       "ownership": "template"
     },
     "hooks/lib/json.sh": {
       "hash": "sha256:2064949551fb8fe2148206513fcbda38081d54c6948b145c2f4be1e8a97f1032",
+      "ownership": "template"
+    },
+    "hooks/model-floor.sh": {
+      "hash": "sha256:c35fbb10a6fdc4336cd8b537f3635c070c229e0aaa4f92dc866636ff830fee84",
       "ownership": "template"
     },
     "hooks/no-push-main.sh": {
@@ -135,7 +143,7 @@
       "ownership": "template"
     },
     "hooks/pre-commit-test.sh": {
-      "hash": "sha256:83d9df43ea74488155de21314bc43fa10a6562635336183c91bf33b555c3c780",
+      "hash": "sha256:b5210c77a2296102afc2d3318a1f2f3f28c515eff76375180bab0aec94f40b50",
       "ownership": "template"
     },
     "hooks/read-size-gate.sh": {
@@ -155,7 +163,7 @@
       "ownership": "template"
     },
     "hooks/run-gate.sh": {
-      "hash": "sha256:957912fdfc3a1eae849ade7809d41a68c69ed6b155d1dd795cd176372401595f",
+      "hash": "sha256:ccfb8ae0ef5b757044482f9962c35f3eb769e6efacf7f124758c3e4c0b384d3d",
       "ownership": "template"
     }
   },
