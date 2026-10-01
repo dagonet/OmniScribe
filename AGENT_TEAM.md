@@ -55,8 +55,8 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 ## Model & Effort Policy
 
 - Orchestrator = session model via `/model`: `fable` for T3/T4, `opus` for T1/T2. Workers run `sonnet`; `architect`/`code-reviewer` run `opus` at `effort: xhigh`; `Explore` runs `haiku` at `effort: low`.
-- Session effort is deliberately **unset**; raise it per role via the agent file's `effort:`, or `/effort` for one session. Never pass `model` in the Agent call — each agent file owns its own.
-- **Aliases only** (`sonnet`/`opus`/`haiku`/`fable`/`inherit`), never a pinned `claude-*` id.
+- Session effort is deliberately **unset**; raise it per role via the agent file's `effort:`, or `/effort` for one session. Typed agents own their `model`; a type without one (general-purpose, built-ins) gets the project default via `hooks/model-floor.sh` unless you pass one.
+- Aliases only, never a pinned `claude-*` id.
 - Wrong answer despite full context -> bigger model. Skipped files/steps -> raise `effort`.
 
 ## Workstream Model

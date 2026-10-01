@@ -97,6 +97,10 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/require-skills-block.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/require-skills-block.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
+          },
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PROJECT_DIR:-.}/hooks/model-floor.sh\" ] || exit 0; bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/model-floor.sh\""
           }
         ]
       },
@@ -115,6 +119,15 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-delegation.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'WARN: ${CLAUDE_PROJECT_DIR:-.}/hooks/enforce-delegation.sh missing -- delegation enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 0; fi; exit $c"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -f \"${CLAUDE_PROJECT_DIR:-.}/hooks/deny-hang-shapes.sh\" ] || exit 0; bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/deny-hang-shapes.sh\""
           }
         ]
       },

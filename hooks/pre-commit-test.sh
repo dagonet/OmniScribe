@@ -87,6 +87,12 @@ RUN_GATE="$(cd "$(dirname "$0")" && pwd)/run-gate.sh"
 PCT_HOOK_T0=$(date +%s 2>/dev/null || echo 0)
 PCT_ARTIFACT_BASE=""
 PCT_TREE=""
+# v4.3.0 fix round 1, S-8 (I1) -- true when pct_capture_tree's own index copy
+# could not be trusted (the real index was not actually copied, or the
+# resulting tree is the universal git EMPTY TREE) -- see that function.
+# pct_note reads this to withhold test_sha256/env (a reusable-record field)
+# rather than let a spurious empty-tree measurement enter a reuse decision.
+PCT_TREE_SUSPECT=false
 # v3.1 — whether the commit segment this hook matched came from inside an
 # unwrapped quoted payload (`bash -c "git commit ..."`, `sh -lc "..."`). Set
 # once a commit segment is found (below); false until then, so every path that
@@ -116,9 +122,30 @@ pct_capture_tree() {
   _pt_d=$(mktemp -d 2>/dev/null) || return 0
   # `--git-path index`, never a hardcoded .git/index: in a linked worktree the
   # index lives under .git/worktrees/<name>/.
-  cp "$(git -C "$_pt_top" rev-parse --git-path index)" "$_pt_d/index" 2>/dev/null || true
+  # v4.3.0 fix round 1, S-8 (I1/I2). `--path-format=absolute`: the BARE
+  # `--git-path` prints a path RELATIVE TO THE CALLING PROCESS'S OWN cwd in a
+  # plain (non-worktree) checkout -- from a cwd other than $_pt_top (e.g. this
+  # hook invoked with `-C` a subdirectory, or from inside one) that relative
+  # path resolves to a nonexistent file, `cp` used to fail SILENTLY, and the
+  # subsequent `add -u` on a freshly-created EMPTY index does nothing at all,
+  # producing the git EMPTY TREE instead of a real measurement. `-p`
+  # preserves the REAL index file's timestamps on the copy rather than
+  # stamping "now" -- without it, git's own racy-git protection can misjudge
+  # a same-second edit as already reflected in the copy (measured stale 7 of
+  # 8; matches hooks/run-gate.sh's own identical fix).
+  _pt_idx=$(git -C "$_pt_top" rev-parse --path-format=absolute --git-path index 2>/dev/null)
+  _pt_copied=false
+  if [ -n "$_pt_idx" ] && cp -p "$_pt_idx" "$_pt_d/index" 2>/dev/null; then
+    _pt_copied=true
+  fi
   GIT_INDEX_FILE="$_pt_d/index" git -C "$_pt_top" add -u -- . >/dev/null 2>&1
   PCT_TREE=$(GIT_INDEX_FILE="$_pt_d/index" git -C "$_pt_top" write-tree 2>/dev/null)
+  # Universal git empty-tree object id -- a content hash, not a per-repo
+  # value, so there is nothing to drift between this literal and the copy in
+  # hooks/run-gate.sh.
+  if [ "$_pt_copied" != true ] || [ "$PCT_TREE" = "4b825dc642cb6eb9a060e54bf8d69288fbee4904" ]; then
+    PCT_TREE_SUSPECT=true
+  fi
   rm -rf "$_pt_d"
   return 0
 }
@@ -188,9 +215,48 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
   # the shape `bash -c "git commit -m x"` -- as opposed to an unwrapped `git
   # commit -m x`; see gc_seg_quoted in hooks/lib/git-cmd.sh.
   _pn_art="$_pn_gd/last-precommit.$_pn_treeseg.json"
-  printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","matched_in_quoted":%s,"gate_dir":"%s"}\n' \
+  # v4.3.0 A2 -- test_sha256/env, on THIS file only (the -noop file above is
+  # unrelated and unchanged). Populated ONLY when this call reports a real,
+  # PASSING **Test** run ($1=test, rc=0): a skip (test-paths-skip, A1), a
+  # failure, the Gate fallback (labelled "gate"), or any other pct_note label
+  # must never look like a reusable Test record to hooks/run-gate.sh, whose
+  # own reuse check (R-A, spec Part A2) requires path=="test" AND rc==0 before
+  # it even reads these two fields -- storing them elsewhere would create a
+  # record that COULD spuriously satisfy that requirement if a future edit
+  # ever relaxed it, which is a trap this file declines to lay.
+  _pn_tsha=""
+  _pn_env=""
+  if [ "$1" = test ] && [ "$2" = 0 ] && [ "$PCT_TREE_SUSPECT" != true ]; then
+    # v4.3.0 fix round 1, S-6 (C1 -- "wrong reuse across directories"). These
+    # two fields must describe the TOPLEVEL's own **Test**, never a
+    # subdirectory's. A commit issued from cwd sub/ (a linked worktree, or a
+    # plain checkout's own subdirectory) resolves REPO_PATH -- and so
+    # PCT_ARTIFACT_BASE/`$_pn_base` -- to sub/, reads sub/PROJECT_CONTEXT.md,
+    # and runs sub/t.sh; but hooks/run-gate.sh always reads **Test** and
+    # computes its environment fingerprint from the TOPLEVEL. If sub/'s
+    # **Test** text happens to be byte-identical to the toplevel's own (an
+    # entirely plausible coincidence, not an attack -- MEASURED: reused,
+    # GATE PASS, and the failing top-level Test never ran), the two would
+    # otherwise "match" while describing two different scripts. `pwd -P`
+    # (physical, symlink-resolved) rather than a plain string compare of
+    # `$_pn_base` vs `$_pn_top`: a bind mount or a symlinked checkout could
+    # make the TEXT of the two paths differ while the DIRECTORY is the same
+    # one, or vice versa -- physical identity is the actual question.
+    _pn_base_phys=$(cd "$_pn_base" 2>/dev/null && pwd -P)
+    _pn_top_phys=$(cd "$_pn_top" 2>/dev/null && pwd -P)
+    if [ -n "$_pn_base_phys" ] && [ "$_pn_base_phys" = "$_pn_top_phys" ]; then
+      _pn_tsha=$(printf '%s' "$TEST_CMD" | gc_sha256 2>/dev/null)
+      # The environment fingerprint is computed from `$_pn_top` (the same
+      # name hooks/run-gate.sh's own REPO_TOP resolves to), never from
+      # `$PCT_ARTIFACT_BASE` -- this check just proved the two are
+      # physically identical, but `$_pn_top` is the name the rest of this
+      # function already uses for that toplevel.
+      _pn_env=$(gc_gate_env "$_pn_top" 2>/dev/null)
+    fi
+  fi
+  printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","matched_in_quoted":%s,"gate_dir":"%s","test_sha256":"%s","env":"%s"}\n' \
     "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "$(printf '%s' "$GC_CMD" | wc -c | tr -d ' ')" "$_pn_tool" \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$PCT_QUOTED" "$_pn_gd" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$PCT_QUOTED" "$_pn_gd" "$_pn_tsha" "$_pn_env" \
     > "$_pn_art.tmp" 2>/dev/null && mv -f "$_pn_art.tmp" "$_pn_art" 2>/dev/null || return 0
   pct_prune "$_pn_gd"
   return 0
@@ -245,6 +311,9 @@ fi
 # and the depth-1/TOCTOU residuals. cmd_len in the diagnostic artifact below
 # reflects the augmented length, in BYTES, on this path -- accepted, it is a
 # diagnostic field, not a gate.
+# The command as typed, before the script-body widening: the **Test paths** skip
+# (v4.3.0 A1, S-28) judges THIS text, never the widened one.
+PCT_RAW_CMD="$GC_CMD"
 GC_CMD="$(gc_augmented_cmd "$GC_CWD")"
 
 # Find the repo of the first `git commit` in the command line (if any).
@@ -348,6 +417,175 @@ GC_SEGMENTS
 # From here the artifact goes to the repo the COMMIT targets, which `git -C` and
 # a `cd` clause can point anywhere. Absolute, and fixed before any cd below.
 PCT_ARTIFACT_BASE="$REPO_PATH"
+
+# v4.3.0 A1 -- **Test paths** (opt-in). Unset, empty or an unfilled placeholder
+# = test everything (today). When set: skip the Test line only if NO changed
+# path -- staged, unstaged or untracked (R-C: `git add x && git commit` has not
+# staged x yet when this hook runs) -- matches the pathspecs. set -f keeps the
+# shell from expanding a glob pathspec against the cwd. git failing to
+# evaluate the pathspecs falls through to the test run (fail-closed).
+#
+# v4.3.0 A1 fix (final review I-1, ruling S-28): the tree this hook inspects is
+# the tree BEFORE the command runs, so any clause ahead of the commit (git rm,
+# git mv, sed -i, a redirect, a script) can change a matching path without the
+# `git status` below seeing it, and `git commit -a` / `-i` / `-o` / a pathspec
+# commits paths that `git status` does not report the way this decision needs.
+# The skip therefore applies ONLY to a lone `git commit` (pct_single_commit);
+# anything else, and any doubt, runs the tests.
+pct_single_commit() { # <raw command> -- 0 only for one plain `git commit`, nothing else
+  local s="$1" n i=0 ch q="" tok="" have=0 k=0 nt t cl c
+  local -a toks=()
+  s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"
+  # Ruling S-33: Claude Code's standard commit form, `-m "$(cat <<'X'` <body> `X` `)"`
+  # at the very end of the command, is a lone commit. Only with a QUOTED delimiter
+  # (the body is then literal text) and only when the text after the terminator
+  # line is exactly `)"`. The whole substitution is replaced by a plain word and the
+  # rest goes through the scanner below, so the flags before `-m` still obey the
+  # -a/-i/-o/pathspec rule. Anything else (unquoted or `<<-`, another substitution,
+  # trailing text, a second command) is not matched here and the scanner refuses `$`.
+  local hd='"$(cat <<' hhead hrest hq hx hline
+  case "$s" in
+    *"$hd"*)
+      hhead="${s%%"$hd"*}"; hrest="${s#*"$hd"}"
+      case "$hhead" in *[[:space:]]-m[[:space:]]) ;; *) return 1 ;; esac
+      hq="${hrest:0:1}"
+      case "$hq" in "'"|'"') ;; *) return 1 ;; esac
+      hrest="${hrest:1}"; hx="${hrest%%"$hq"*}"
+      [[ "$hx" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || return 1
+      hrest="${hrest#"$hx$hq"}"
+      [ "${hrest:0:1}" = $'\n' ] || return 1
+      hrest="${hrest:1}"
+      while :; do
+        case "$hrest" in *$'\n'*) ;; *) return 1 ;; esac
+        hline="${hrest%%$'\n'*}"; hrest="${hrest#*$'\n'}"
+        # Ruling S-34: bash ends the body at a line that STARTS with the delimiter
+        # followed by `)` and runs the rest of that line. Any line that starts with the
+        # delimiter but is not exactly it is doubt: not a lone commit.
+        case "$hline" in "$hx") break ;; "$hx"*) return 1 ;; esac
+      done
+      [ "$hrest" = ')"' ] || return 1
+      s="${hhead}x" ;;
+  esac
+  n=${#s}
+  while [ "$i" -lt "$n" ]; do
+    ch="${s:$i:1}"; i=$((i + 1))
+    case "$q" in
+      "'") if [ "$ch" = "'" ]; then q=""; else tok="$tok$ch"; fi; continue ;;
+      '"')
+        case "$ch" in
+          '"') q="" ;;
+          '$'|'`') return 1 ;;
+          '\') tok="$tok${s:$i:1}"; i=$((i + 1)) ;;
+          *) tok="$tok$ch" ;;
+        esac
+        continue ;;
+    esac
+    case "$ch" in
+      "'") q="'"; have=1 ;;
+      '"') q='"'; have=1 ;;
+      '\'|'&'|';'|'|'|'<'|'>'|'('|')'|'{'|'}'|'$'|'`'|'!'|'#'|'*'|'?'|'['|$'\n'|$'\r') return 1 ;;
+      ' '|$'\t') if [ "$have" = 1 ] || [ -n "$tok" ]; then toks+=("$tok"); tok=""; have=0; fi ;;
+      *) tok="$tok$ch" ;;
+    esac
+  done
+  [ -z "$q" ] || return 1
+  if [ "$have" = 1 ] || [ -n "$tok" ]; then toks+=("$tok"); fi
+  nt=${#toks[@]}
+  [ "$nt" -ge 2 ] || return 1
+  [ "${toks[0]}" = git ] || return 1
+  k=1
+  while [ "$k" -lt "$nt" ]; do
+    case "${toks[$k]}" in
+      -C) k=$((k + 2)) ;;
+      --no-pager|-P|--paginate|--no-optional-locks|--literal-pathspecs) k=$((k + 1)) ;;
+      commit) break ;;
+      *) return 1 ;;
+    esac
+  done
+  [ "$k" -lt "$nt" ] && [ "${toks[$k]}" = commit ] || return 1
+  k=$((k + 1))
+  while [ "$k" -lt "$nt" ]; do
+    t="${toks[$k]}"; k=$((k + 1))
+    case "$t" in
+      --) return 1 ;;
+      --message|--file|--author|--date|--cleanup|--template|--reuse-message|--reedit-message) k=$((k + 1)) ;;
+      --message=*|--file=*|--author=*|--date=*|--cleanup=*|--template=*|--gpg-sign=*) ;;
+      --amend|--no-verify|--allow-empty|--allow-empty-message|--no-edit|--edit|--signoff|--no-signoff|--verbose|--quiet|--no-gpg-sign|--gpg-sign|--no-post-rewrite|--reset-author) ;;
+      --*) return 1 ;;
+      -?*)
+        cl="${t#-}"
+        while [ -n "$cl" ]; do
+          c="${cl:0:1}"; cl="${cl:1}"
+          case "$c" in
+            m|F|C|c|t) [ -z "$cl" ] && k=$((k + 1)); cl="" ;;
+            S) cl="" ;;
+            n|s|v|q|e) ;;
+            *) return 1 ;;
+          esac
+        done ;;
+      *) return 1 ;;
+    esac
+  done
+  return 0
+}
+TEST_PATHS=$(grep -E "${GC_KEY_PRE}\*\*Test paths\*\*:" "$REPO_PATH/PROJECT_CONTEXT.md" 2>/dev/null | sed -E "s/${GC_KEY_PRE}\\*\\*Test paths\\*\\*:[[:space:]]*//;s/[[:space:]]*\$//;s/^\`//;s/\`\$//" | head -1)
+case "$TEST_PATHS" in *\{\{*\}\}*) TEST_PATHS="" ;; esac
+if [ -n "$TEST_PATHS" ] && ! pct_single_commit "$PCT_RAW_CMD"; then
+  echo "pre-commit-test: **Test paths** applies only to a lone \`git commit\` (no chained command, -a/-i/-o or pathspec) -- running the tests" >&2
+  TEST_PATHS=""
+fi
+if [ -n "$TEST_PATHS" ]; then
+  set -f
+  # v4.3.0 A1 fix round 1 (S-4): git pathspec magic (a word beginning with
+  # `:`, e.g. `:(exclude)*`, `:!x`) can make `git status ... -- $TEST_PATHS`
+  # exit 0 with EMPTY output regardless of the real changes -- a silent,
+  # permanent skip that the existing fail-closed guard (which only catches a
+  # non-zero git exit) does not catch. Detected before the git call, with
+  # set -f still in effect since a plain word may itself be a glob.
+  _tp_magic=""
+  # shellcheck disable=SC2086 # word-splitting the pathspec list is intended
+  for _tp_w in $TEST_PATHS; do
+    case "$_tp_w" in
+      :*) _tp_magic=1 ;;
+    esac
+  done
+  if [ -n "$_tp_magic" ]; then
+    set +f
+    echo "pre-commit-test: WARN **Test paths** uses git pathspec magic (':...'), which can match nothing -- ignoring it and running the tests" >&2
+  else
+    # v4.3.0 A1 fix round 2 (S-5): a word that matches NO tracked file --
+    # a typo (srcc/), a renamed/removed directory, or literal quotes that
+    # reached this hook as part of the word itself ("src/") -- makes
+    # `git status ... -- $TEST_PATHS` exit 0 with EMPTY output the same way
+    # pathspec magic does: a silent, permanent skip. Validated one word at a
+    # time (quoted, so a real glob word is not re-expanded by the shell here;
+    # set -f is still in effect from above) against `git ls-files`, which
+    # must print at least one line for a word to count as real. Only when
+    # EVERY word validates does the existing git-status skip decision apply.
+    _tp_invalid=""
+    for _tp_w in $TEST_PATHS; do
+      if ! _tp_lsout=$(git -C "$REPO_PATH" ls-files -- "$_tp_w" 2>/dev/null) || [ -z "$_tp_lsout" ]; then
+        _tp_invalid="$_tp_w"
+        break
+      fi
+    done
+    if [ -n "$_tp_invalid" ]; then
+      set +f
+      echo "pre-commit-test: WARN **Test paths** entry '$_tp_invalid' matches no tracked file -- ignoring **Test paths**, running the tests" >&2
+    else
+      # shellcheck disable=SC2086 # word-splitting the pathspec list is intended
+      if _tp_hits=$(git -C "$REPO_PATH" status --porcelain --untracked-files=all -- $TEST_PATHS 2>/dev/null); then
+        set +f
+        if [ -z "$_tp_hits" ]; then
+          echo "pre-commit-test: no changed path matches **Test paths** ($TEST_PATHS) -- tests skipped for this commit; the merge gate still runs in full" >&2
+          pct_note test-paths-skip 0
+          exit 0
+        fi
+      fi
+      set +f
+    fi
+  fi
+fi
 
 # Read test command from PROJECT_CONTEXT.md through GC_KEY_PRE (see the header
 # note on that constant in hooks/lib/git-cmd.sh: a leading UTF-8 BOM otherwise

@@ -15,7 +15,7 @@ _No active sprint._
 
 ## Toolkit
 
-**claude-code-toolkit v4.2.0** (`d95cf57c`), synced 2026-09-30 — **recorded in the same PR as the sync**. v4.1.2 was skipped as a separate sync; its nine template changes arrived in this one (v4.2.0 itself changed no template). Manifest is **v4**: `CLAUDE.md` is template-owned and byte-identical, project content lives in `.claude/project-instructions.md`, agent tool extensions in `.claude/agent-grants.json`. `template_verify` post_commit: **24 PASS, 0 FAIL, 0 SKIP, 7 INFO**.
+**claude-code-toolkit v4.3.0** (`3a901fe3`), synced 2026-10-01 — **recorded in the same PR as the sync**. Two new hooks: `deny-hang-shapes.sh` (refuses `cd <repo> && cmd1; cmd2`-shaped commands — use `git -C <dir>` or a script file) and `model-floor.sh` (a sub-agent spawn with no model gets the project default, `sonnet`). Three new `PROJECT_CONTEXT.md` keys are opt-in and NOT added here: `**Test paths**`, `**Gate extra**`, `**Subagent default model**` — the sync never rewrites this `once`-class file, so add them by hand from the template's commented examples if wanted. Manifest is **v4**: `CLAUDE.md` is template-owned and byte-identical, project content lives in `.claude/project-instructions.md`, agent tool extensions in `.claude/agent-grants.json`. `template_verify` post_commit: **24 PASS, 0 FAIL, 0 SKIP, 7 INFO**.
 
 > **Record the sync in the same PR as the sync.** This line went stale three times — after #142/#143, #144/#145, and #147/#148 — because the sync and its record were separate commits. `template_verify` cannot catch it: `PROJECT_STATE.md` is `once`-class project prose and sits outside every one of its checks. Writing the habit down was not enough on its own; **v4.1.0 is the first sync where the record ships in the same commit**, which is the only thing that has ever actually closed it.
 
@@ -38,7 +38,8 @@ Sync history since v3.0.0:
 | — | — | #150 | Marked three `PROJECT_STATE.md` statements superseded by v4.1.0 |
 | v4.1.1 | `eef42779` | #151 | v4.1.0 rollout patch: four enforcement scripts updated; the `#20` dropped-`reason` repair applied by hand |
 | — | — | #152–#154 | Worktree base moved under `g:/git/.worktrees/panoscribe`; `dist` artifact retention 3 days; `.claude/worktrees/` gitignored; always-on gate-artifact rule corrected |
-| v4.2.0 | `d95cf57c` | — | Carries v4.1.2's nine template changes (8 hook scripts + `AGENT_TEAM.md`): backslash-continuation join, whole-line comment strip before the verb scan, filesystem case-fold probe, byte-measured `cmd_len`, widened gate fingerprint. No conflicts, no local edits, no migration; the hand-restored `reason` annotation survived finalize |
+| v4.2.0 | `d95cf57c` | #155 | Carries v4.1.2's nine template changes (8 hook scripts + `AGENT_TEAM.md`): backslash-continuation join, whole-line comment strip before the verb scan, filesystem case-fold probe, byte-measured `cmd_len`, widened gate fingerprint. No conflicts, no local edits, no migration; the hand-restored `reason` annotation survived finalize |
+| v4.3.0 | `3a901fe3` | — | New hooks `deny-hang-shapes.sh` and `model-floor.sh` (wired in `settings.json`); `pre-commit-test.sh`, `run-gate.sh`, `agent-budget-warn.sh`, `lib/git-cmd.sh`, `AGENT_TEAM.md` updated. No conflicts, no local edits, no migration. MCP server restarted first (it held 4.2.0). Three opt-in `PROJECT_CONTEXT.md` keys left unset |
 
 ### v4.1.1 — the rollout patch, and one repair that no sync could do
 

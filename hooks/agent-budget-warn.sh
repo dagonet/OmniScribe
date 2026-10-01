@@ -115,6 +115,40 @@ printf '%s' "$N" > "$COUNTER" 2>/dev/null || exit 0
 # Block on each threshold crossing: BLOCK_AT, then every BLOCK_EVERY past it
 # (120, 180, 240, ...). Strictly -eq / modulo-zero, so calls in between pass.
 if [ "$N" -eq "$BLOCK_AT" ] || { [ "$N" -gt "$BLOCK_AT" ] && [ $(( (N - BLOCK_AT) % BLOCK_EVERY )) -eq 0 ]; }; then
+  # v4.3.0 A3 -- a commit is the one call worth allowing at budget exhaustion:
+  # hooks run in parallel, so blocking it after pre-commit-test ran wastes the
+  # run AND loses the work. Parser-free: a raw match on the payload. A false
+  # positive lets one non-commit call through once -- the brake still fires on
+  # every other call. The command arrives JSON-escaped, so the prefix before
+  # `git` accepts backslash escapes (`bash -c \"git commit ...\"`); the plan's
+  # `[^"]*` stopped at the first \" and missed a quoted commit.
+  #
+  # Shape matched: `git` or `git.exe`, any number of `-x [arg]` options (an
+  # arg is a space-free token or an escaped-quoted string, so `-C \"a b\"` and
+  # `-c user.name=\"A B\"` work), then the word `commit`, which must END there
+  # (space, quote, `;&|)` or a backslash escape) so `commit-graph` and
+  # `commit-tree` are not commits.
+  # KNOWN LIMITS (all fail toward BLOCKING, the safe side): an option arg in
+  # single quotes containing a space (`-C 'a b'`), a `git` reached through an
+  # alias or a variable (`$GIT commit`), `git --git-dir=x commit` with a space in
+  # x, and a commit hidden behind a wrapper script. And a false positive lets
+  # one non-commit call through once (`echo git commit`).
+  BUD_CH='(\\"[^"]*\\"|[^[:space:]"\\])'
+  BUD_CH1='(\\"[^"]*\\"|[^-[:space:]"\\])'
+  BUD_OPT="[[:space:]]+-${BUD_CH}+([[:space:]]+${BUD_CH1}${BUD_CH}*)?"
+  BUD_RX='"command":"([^"\\]|\\.)*\bgit(\.exe)?('"$BUD_OPT"')*[[:space:]]+commit([[:space:]";&|)\\]|$)'
+  if { [ "$TOOL_NAME" = "Bash" ] || [ "$TOOL_NAME" = "PowerShell" ]; } \
+     && printf '%s' "$INPUT" | grep -Eq "$BUD_RX"; then
+    log_event commit-allowed
+    # UN-COUNT the call, exactly as the SendMessage exemption above does not
+    # count it. Otherwise the commit spends this threshold (-eq fires once per
+    # value), the next block is BLOCK_EVERY calls away, and the only stop
+    # signal is exit-0 stderr, which the model is unlikely to see. Un-counted,
+    # the next non-commit call lands on the threshold again and is blocked.
+    printf '%s' "$((N - 1))" > "$COUNTER" 2>/dev/null
+    echo "BUDGET: $N tool calls -- this commit is allowed so the work is saved; every other call stays blocked. Report and stop after it." >&2
+    exit 0
+  fi
   log_event block
   cat >&2 <<EOF
 BUDGET: this spawn has made $N tool calls (median is 15; 120 is the first ceiling).

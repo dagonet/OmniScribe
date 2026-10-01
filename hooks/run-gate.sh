@@ -260,6 +260,148 @@ case "$GATE_CMD" in
     ;;
 esac
 
+# v4.3.0 A2 -- **Gate extra** (opt-in). Sound only if Gate == Test && Gate
+# extra (R-A, spec Part A2/plan refinement R-A); otherwise ignore it and run
+# the full Gate exactly as before. Read here, once, with the same
+# GC_KEY_PRE-anchored field grammar the other extractors on this page use.
+# v4.3.0 fix round 1, M2: `( Command)?` tolerance, same as GATE_CMD's own
+# extraction just above (java/python variants spell it "**Test Command**:") --
+# rg_field is generic over the key name, so this is one change for every key
+# it reads (**Gate extra**, **Test**), not a second copy of the tolerance.
+rg_field() { grep -E "${GC_KEY_PRE}\*\*$1( Command)?\*\*:" "$REPO_TOP/PROJECT_CONTEXT.md" 2>/dev/null | sed -E "s/${GC_KEY_PRE}\\*\\*$1( Command)?\\*\\*:[[:space:]]*//;s/[[:space:]]*\$//;s/^\`//;s/\`\$//" | head -1; }
+rg_norm() { tr -s ' \t' '  ' | sed 's/^ //;s/ $//'; }
+GATE_EXTRA=$(rg_field 'Gate extra'); RG_TEST=$(rg_field 'Test')
+case "$GATE_EXTRA$RG_TEST" in *\{\{*\}\}*) GATE_EXTRA="" ;; esac
+if [ -n "$GATE_EXTRA" ] && [ "$(printf '%s' "$GATE_CMD" | rg_norm)" != "$(printf '%s && %s' "$RG_TEST" "$GATE_EXTRA" | rg_norm)" ]; then
+  echo "run-gate: WARN **Gate extra** is set but **Gate** is not exactly '<Test> && <Gate extra>' -- ignoring **Gate extra**, running the full Gate" >&2
+  GATE_EXTRA=""
+fi
+
+# v4.3.0 fix round 2, S-10 (C2 re-review). Round 1 shipped a DENYLIST over
+# whitespace-separated tokens, and the re-review reproduced NINE wrong-PASS
+# bypasses of it, each giving a split rc 0 where the plain Gate gives rc 1:
+# `c\d sub` and `\cd sub` (a backslash inside the word defeats an exact-token
+# match -- bash removes it before running "cd" for real), `true&&cd sub`
+# (no space around `&&` used to leave "true&&cd" as ONE token under
+# whitespace-only splitting), `eval cd\ sub`, `{cd,sub}` (brace expansion
+# produces "cd sub" only once bash itself parses the word), `cd${IFS}sub`,
+# `printf -v D sub/ && bash ${D}x.sh`, `: ${D:=sub/} && bash ${D}x.sh`,
+# `read D < d.txt && bash ${D}x.sh`, `hash -p ./sub/x.sh bash && bash x.sh`.
+# A DENYLIST over tokens cannot enumerate every way shell syntax can build or
+# hide a word; this is now a real ALLOW-list -- refuse anything outside a
+# small, enumerated safe character set BEFORE tokens are even considered, so
+# none of the above ever reaches the token/verb scan in the first place.
+rg_stateless() {
+  rgst_t="$1"
+  rgst_trim=$(printf '%s' "$rgst_t" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  [ -n "$rgst_trim" ] || return 1
+  # Character allow-list: letters, digits, `_ . / : @ % + , = SPACE -` ONLY.
+  # Excludes, by construction and not by enumeration, EVERY mechanism above:
+  # backslash, `$`, `{` `}`, `<` `>`, `*` `?` `[` `]`, `~`, `&` `|`, `;`, a
+  # backtick, a quote, `(` `)`. Anchored full-string, not a substring test.
+  if ! printf '%s' "$rgst_trim" | grep -Eq '^[A-Za-z0-9_./:@%+,= -]+$'; then
+    return 1
+  fi
+  set -f
+  # shellcheck disable=SC2086
+  set -- $rgst_trim
+  set +f
+  # v4.3.0 fix round 4, S-12: FIRST-WORD ALLOW-list. Rounds 1-3 denylisted
+  # shell verbs and leaked every round (9, then 2, then 1 wrong-PASS bypass;
+  # the last one `coproc sleep 5 && jobs -x bash chk.sh %1`, where the job
+  # table carries the coproc across `&&`). State can only cross a split
+  # boundary through the shell that runs the parts, and a part whose first
+  # word is an external program (or a relative path to a script) changes no
+  # state in that shell. So the first word must be one of these names, or a
+  # relative path: contains `/`, no `..`, not absolute. Anything else --
+  # every builtin, keyword and function name -- refuses. Keep this `case`
+  # alternation on ONE line (a continuation silently corrupts a pattern).
+  case "$1" in
+    bash|sh|python|python3|node|npm|npx|pnpm|yarn|cargo|dotnet|go|mvn|gradle|./gradlew|pytest|make|ctest|rake|bundle|composer|php|ruby|perl|deno|bun) ;;
+    /*|*..*) return 1 ;;
+    */*) ;;
+    *) return 1 ;;
+  esac
+  for rgst_tok in "$@"; do
+    # A word beginning with `%` is a job spec to `jobs -x`, `kill`, `wait`,
+    # `fg`, `bg` (S-12 rule c). Refused at EVERY position, the first word
+    # included (stricter than the ruling, which names later words only: a
+    # first word like `%1/x` is a relative path to the list above).
+    case "$rgst_tok" in
+      %*) return 1 ;;
+    esac
+    # A NAME=value OR NAME+=value assignment token (env-var-style prefix;
+    # fix round 3, S-11 -- the round-2 regex missed the `+=` append form,
+    # measured: `PATH+=:sub && bash pcheck.sh` split rc 0 where the plain
+    # Gate's own `PATH+=:sub` really changed PATH and the plain Gate's own
+    # pcheck.sh correctly saw it and failed). Checked at any position, not
+    # only the first, per this function's whole stance: doubt refuses.
+    if printf '%s' "$rgst_tok" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*\+?='; then
+      return 1
+    fi
+    # Verb denylist, widened (fix round 2): `eval`, `exec`, `trap`, `read`,
+    # `printf`, `hash`, and the other indirection/builtin-state verbs the
+    # bypasses above actually used, alongside round 1's cd/pushd/popd/
+    # export/source/./set/umask/alias/unset/shopt. This scan is now a
+    # SECOND, independent line of defence behind the character allow-list
+    # above (most of the bypasses were already stopped there) -- kept
+    # because a token-shaped denylist still catches a plain, otherwise
+    # allow-list-legal "eval something" that the character check alone
+    # would pass.
+    case "$rgst_tok" in
+      cd|pushd|popd|export|source|.|set|umask|alias|unset|shopt|eval|exec|trap|read|printf|hash|ulimit|builtin|command|declare|typeset|local|readonly|let|mapfile|readarray|getopts|enable)
+        return 1 ;;
+    esac
+  done
+  return 0
+}
+
+# Legs, computed ONCE here (not re-derived in the run section) so the
+# state-free check and the actual run walk the IDENTICAL list. Split on `&&`
+# with optional surrounding whitespace (fix round 2: round 1 split on the
+# literal ` && ` only, which is exactly what let `true&&cd sub` through as
+# one un-inspected token). Every part -- **Test** and every leg -- is
+# validated by rg_stateless below; the character allow-list it applies makes
+# a SEPARATE "is this ambiguous to split" exclusion unnecessary (any of the
+# old ambiguity metacharacters -- a quote, `$(`, a backtick, `(`, `<<` -- is
+# already outside the allowed character set and refuses the whole thing).
+if [ -n "$GATE_EXTRA" ]; then
+  RG_LEGS=$(printf '%s' "$GATE_EXTRA" | sed -E 's/[[:space:]]*&&[[:space:]]*/\n/g')
+  RG_UNSAFE=0
+  # v4.3.0 fix round 3, S-11 (I2 re-review -- "empty legs skip refusal
+  # instead of triggering it"). A LEADING or TRAILING `&&` (`&& bash x.sh`;
+  # `bash x.sh &&`) names an EMPTY part at that end. The trailing case is
+  # invisible to the split-then-inspect walk below: `$(...)` command
+  # substitution strips ALL trailing newlines from sed's own output, and the
+  # substitution that produces the empty final leg does so BY INSERTING that
+  # trailing newline -- so the empty leg it just created is exactly what
+  # gets stripped before $RG_LEGS is ever read. Checked directly against the
+  # (whitespace-trimmed, but otherwise UNSPLIT) **Gate extra** text, which
+  # command substitution has not yet had a chance to mangle. MEASURED:
+  # `bash x.sh &&` and `&& bash x.sh` both split rc 0 pre-fix where the
+  # plain Gate is a bash syntax error (rc 1).
+  RG_EXTRA_TRIMMED=$(printf '%s' "$GATE_EXTRA" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  case "$RG_EXTRA_TRIMMED" in
+    '&&'*|*'&&') RG_UNSAFE=1 ;;
+  esac
+  rg_stateless "$RG_TEST" || RG_UNSAFE=1
+  # v4.3.0 fix round 3: NO `continue` on an empty/whitespace-only leg -- it
+  # must be REFUSED, not silently skipped. `rg_stateless` already refuses an
+  # empty trimmed string on its own (`[ -n "$rgst_trim" ] || return 1`), so
+  # simply always calling it is enough; skipping the call is what let a
+  # MIDDLE empty leg (`bash x.sh && && bash x.sh`, which the split above DOES
+  # preserve as a genuine blank line) vanish unchecked.
+  while IFS= read -r rg_chk_leg; do
+    rg_stateless "$rg_chk_leg" || RG_UNSAFE=1
+  done <<RG_STATE_CHECK
+$RG_LEGS
+RG_STATE_CHECK
+  if [ "$RG_UNSAFE" = 1 ]; then
+    echo "run-gate: WARN **Test** or a **Gate extra** leg is not an allow-listed state-free simple command (character set, first word, job spec, verb, assignment, or an empty leg) -- ignoring **Gate extra**, running the full Gate" >&2
+    GATE_EXTRA=""
+  fi
+fi
+
 HEAD_SHA=$(git -C "$CWD" rev-parse HEAD 2>/dev/null)
 BRANCH=$(git -C "$CWD" branch --show-current 2>/dev/null)
 ARTIFACT_DIR=$(gc_gate_dir "$CWD")
@@ -342,9 +484,80 @@ cd "$REPO_TOP" || exit 1
 TMPD=$(mktemp -d)
 trap 'rm -rf "$TMPD"' EXIT
 TMPIDX="$TMPD/index"   # must not pre-exist: git rejects a 0-byte index
-cp "$(git -C "$REPO_TOP" rev-parse --git-path index)" "$TMPIDX" 2>/dev/null || true
+# v4.3.0 fix round 1, S-8 (I1/I2). `--path-format=absolute`: the BARE
+# `--git-path` prints a path RELATIVE TO THE CALLING PROCESS'S OWN cwd in a
+# plain (non-worktree) checkout (the same quirk gc_gate_dir's header note
+# documents for `--git-common-dir`) -- from a cwd other than REPO_TOP that
+# relative path resolves to a nonexistent file, `cp` used to fail SILENTLY
+# (`2>/dev/null || true`), and the subsequent `add -u` on a freshly-created
+# EMPTY index does nothing at all, producing the git EMPTY TREE
+# (4b825dc642cb6eb9a060e54bf8d69288fbee4904) instead of a real measurement.
+# `-p` preserves the REAL index file's timestamps on the copy rather than
+# stamping "now" -- without it, git's own racy-git protection (which compares
+# an index entry's mtime against the index file's own mtime) can misjudge a
+# same-second edit as already reflected in the copy (measured stale 7 of 8).
+RG_IDX=$(git -C "$REPO_TOP" rev-parse --path-format=absolute --git-path index 2>/dev/null)
+RG_IDX_COPIED=false
+if [ -n "$RG_IDX" ] && cp -p "$RG_IDX" "$TMPIDX" 2>/dev/null; then
+  RG_IDX_COPIED=true
+fi
 GIT_INDEX_FILE="$TMPIDX" git -C "$REPO_TOP" add -u -- . >/dev/null 2>&1
 TREE_HASH=$(GIT_INDEX_FILE="$TMPIDX" git -C "$REPO_TOP" write-tree 2>/dev/null)
+# The universal git empty-tree object id -- a content hash, not a per-repo
+# value, so there is nothing to drift between this literal and any other
+# copy of it; not worth a GC_*-style shared-constant census over.
+RG_EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+RG_TREE_SUSPECT=false
+if [ "$RG_IDX_COPIED" != true ] || [ "$TREE_HASH" = "$RG_EMPTY_TREE" ]; then
+  RG_TREE_SUSPECT=true
+fi
+
+# v4.3.0 A2 -- ENV_HASH/ENV_DETAIL, MOVED UP from after the gate command
+# exits (v4.0.3 item 13's computation) so the **Gate extra** reuse decision,
+# which must be settled before anything runs, can compare against the same
+# fingerprint the artifact will go on to store. v4.3.0 fix round 1, M1: this
+# is a TIMING change, not a value-preserving relocation -- computing the
+# environment BEFORE the gate command runs, instead of after, can genuinely
+# differ if the gate command itself changes the environment (installs a
+# dependency, touches server/.venv, changes the resolved node/python). FAILS
+# CLOSED exactly as before: gc_gate_env returns 1 with no output when it has
+# no sha256 backend, leaving ENV_HASH/ENV_DETAIL empty.
+ENV_HASH=$(gc_gate_env "$REPO_TOP" 2>/dev/null) || ENV_HASH=""
+ENV_DETAIL=""
+[ -n "$ENV_HASH" ] && ENV_DETAIL=$(gc_gate_env "$REPO_TOP" -v 2>/dev/null | tr '\n' '|')
+
+# v4.3.0 A2 -- **Gate extra** reuse decision (R-A and S-7 statelessness
+# already validated above). Sound only when hooks/pre-commit-test.sh left a
+# record for THIS EXACT working tree that ran the **Test** line itself (path
+# "test" -- never "test-paths-skip" (A1) or any other pct_note label), passed
+# (rc 0), used the identical **Test** command (test_sha256) and environment
+# (env), agrees on the working tree (tree -- v4.3.0 fix round 1, S-6/M3: a
+# belt-and-suspenders check independent of the filename lookup, so a
+# corrupted or foreign record cannot be reused just because it happens to
+# sit at the expected path), and is still fresh under the same 24h rule
+# gate-before-merge.sh already applies to gate artifacts (GC_GATE_PRUNE_S).
+# ENV_HASH empty, ENV_DETAIL carrying an `=absent` contributor, or THIS
+# INVOCATION'S OWN tree capture being suspect (RG_TREE_SUSPECT, S-8) voids
+# the comparison outright -- same polarity as gate-before-merge.sh's own
+# tree+env TTL extension (v4.1.1 #15): a cannot-determine fingerprint must
+# never sit inside a matching aggregate.
+REUSED=""
+RG_REC="$ARTIFACT_DIR/last-precommit.$TREE_HASH.json"
+if [ -n "$GATE_EXTRA" ] && [ -f "$RG_REC" ] && [ -n "$ENV_HASH" ] && [ "$RG_TREE_SUSPECT" != true ] \
+   && ! printf '%s' "$ENV_DETAIL" | grep -q '=absent'; then
+  rg_rec() { grep -o "\"$1\":\"[^\"]*\"" "$RG_REC" | head -1 | sed "s/\"$1\":\"//;s/\"\$//"; }
+  rg_age=$(( $(date +%s) - $(stat -c %Y "$RG_REC" 2>/dev/null || stat -f %m "$RG_REC" 2>/dev/null || echo 0) ))
+  # v4.3.0 fix round 1, M3: path and rc are ANCHORED TOGETHER as one literal
+  # substring -- the fixed field order (`{"path":"%s","rc":%s,...}`) makes
+  # this the exact text a real "test"+rc-0 record contains, a stricter test
+  # than matching the two independently.
+  if grep -q '"path":"test","rc":0,' "$RG_REC" \
+     && [ "$(rg_rec test_sha256)" = "$(printf '%s' "$RG_TEST" | gc_sha256)" ] \
+     && [ "$(rg_rec env)" = "$ENV_HASH" ] && [ "$(rg_rec tree)" = "$TREE_HASH" ] \
+     && [ "$rg_age" -le "$GC_GATE_PRUNE_S" ]; then
+    REUSED=$(basename "$RG_REC")
+  fi
+fi
 
 RUN_GATE_ACTIVE=1
 export RUN_GATE_ACTIVE
@@ -364,8 +577,80 @@ export RUN_GATE_ACTIVE
 RUN_GATE_TERMINAL="$TMPD/terminal"
 export RUN_GATE_TERMINAL
 rm -f "$RUN_GATE_TERMINAL"
-bash -c "$GATE_CMD"
-GATE_RC=$?
+
+# v4.3.0 A2 -- run section. RUN_GATE_ACTIVE stays exported (above) around
+# EVERY command this section runs, reused-Test-skip or not, exactly as
+# before: a nested run-gate.sh at any depth, in any leg, must still see it.
+#
+# GATE_EXTRA empty: the ORIGINAL single command, byte-for-byte (the
+# consistency script's registration/mirror checks anchor on this exact
+# literal) -- LEGS_JSON stays "[]", untouched by anything below.
+#
+# GATE_EXTRA set: **Test** runs first UNLESS REUSED names a record to skip it
+# (R-A already guarantees Gate == Test && Gate extra, so this is sound), then
+# each **Gate extra** leg runs in argv order, stopping at the first failure.
+# Per-leg results are recorded whether or not Test was reused -- R-A: "run-gate
+# always runs Test and each extra leg as separate steps, so per-leg results
+# exist whether or not Test is reused." A leg's own 78 is NOT given terminal
+# treatment here; the single clamp below (keyed on the provenance marker, not
+# on which command ran) still covers it, same as the plain-Gate path always
+# has.
+LEGS_JSON="[]"
+if [ -z "$GATE_EXTRA" ]; then
+  bash -c "$GATE_CMD"
+  GATE_RC=$?
+else
+  GATE_RC=0
+  if [ -n "$REUSED" ]; then
+    echo "run-gate: Test legs reused from $REUSED"
+  else
+    bash -c "$RG_TEST"
+    GATE_RC=$?
+  fi
+  if [ "$GATE_RC" -eq 0 ]; then
+    # v4.3.0 fix round 1: RG_LEGS is NOT recomputed here -- it was already
+    # split, once, alongside the S-7 state-free check above, and the check
+    # and the run must walk the IDENTICAL list or a leg could be validated
+    # against one split and executed against a different one.
+    # v4.3.0 fix round 3, S-11: no `continue`-on-empty here either -- this
+    # loop must never actually SEE an empty leg, because the validation
+    # section above now refuses the whole **Gate extra** (clearing it, so
+    # this branch is never reached at all) the moment any leg -- Test
+    # included -- is empty or whitespace-only.
+    # v4.3.0 fix round 5, S-13: the loop's own stdin is the here-doc holding
+    # the leg list, so a leg that read stdin (`cat`, a test runner waiting on
+    # input) used to swallow the remaining legs -- they never ran, GATE PASS.
+    # fd 3 keeps the CALLER's stdin, and every leg reads that, exactly what
+    # its counterpart in the one-command Gate reads. Closed after the loop.
+    #
+    # Known limits of splitting (not closed by any check above; one fresh
+    # `bash -c` per leg behaves like the fresh shell the reused Test ran in):
+    # (a) bash's command hash table -- a leg that installs a binary shadowing
+    #     one an earlier leg already ran can make the one-command Gate reuse
+    #     the old hashed path where a split leg looks it up anew;
+    # (b) BASH_FUNC_* exported functions and BASH_ENV from the caller's
+    #     environment are imported/sourced once per leg when split, once in
+    #     the plain Gate.
+    exec 3<&0
+    RG_LEGS_ARR=""
+    while IFS= read -r rg_leg; do
+      rg_t0=$(date +%s 2>/dev/null || echo 0)
+      bash -c "$rg_leg" <&3 3<&-
+      rg_leg_rc=$?
+      rg_t1=$(date +%s 2>/dev/null || echo 0)
+      rg_leg_sha=$(printf '%s' "$rg_leg" | gc_sha256 2>/dev/null)
+      RG_LEGS_ARR="${RG_LEGS_ARR:+$RG_LEGS_ARR,}{\"sha256\":\"$rg_leg_sha\",\"rc\":$rg_leg_rc,\"elapsed_s\":$((rg_t1 - rg_t0))}"
+      if [ "$rg_leg_rc" -ne 0 ]; then
+        GATE_RC=$rg_leg_rc
+        break
+      fi
+    done <<RG_LEG_LIST
+$RG_LEGS
+RG_LEG_LIST
+    exec 3<&-
+    LEGS_JSON="[$RG_LEGS_ARR]"
+  fi
+fi
 
 # THE CLAMP. NOT DEAD CODE — DELETING IT OPENS A COLLISION CHANNEL (v2.2.5
 # round 3). Until this release every nonzero from the gate command collapsed to
@@ -447,12 +732,18 @@ if [ "$GATE_RC" -eq 0 ]; then
   # minted where the fingerprint could not be computed carries no `env` at
   # all, which gate-before-merge.sh's extension already treats as "not
   # eligible for the extension" (same as an older writer's artifact).
-  ENV_HASH=$(gc_gate_env "$REPO_TOP" 2>/dev/null) || ENV_HASH=""
-  ENV_DETAIL=""
-  [ -n "$ENV_HASH" ] && ENV_DETAIL=$(gc_gate_env "$REPO_TOP" -v 2>/dev/null | tr '\n' '|')
+  # v4.3.0 A2: ENV_HASH/ENV_DETAIL are no longer (re)computed here -- they were
+  # moved BEFORE the run (above, alongside TREE_HASH) so the **Gate extra**
+  # reuse decision could use them; the values stored below are identical to
+  # what that earlier computation produced, per the CAVEAT two paragraphs up
+  # (both are taken before the gate command runs).
+  # `reused_test` (v4.3.0 A2): the reused record's filename, or "" when Test
+  # ran (GATE_EXTRA unset/invalid, or no eligible record). `legs` (A2): one
+  # entry per **Gate extra** leg actually run this invocation -- "[]" when
+  # GATE_EXTRA is not in effect.
   ARTIFACT_TMP="$ARTIFACT.tmp"
-  printf '{"sha":"%s","tree":"%s","branch":"%s","ts":"%s","status":"pass","env":"%s","env_detail":"%s"}\n' \
-    "$HEAD_SHA" "$TREE_HASH" "${BRANCH:-unknown}" "$TS" "$ENV_HASH" "$ENV_DETAIL" > "$ARTIFACT_TMP"
+  printf '{"sha":"%s","tree":"%s","branch":"%s","ts":"%s","status":"pass","env":"%s","env_detail":"%s","reused_test":"%s","legs":%s}\n' \
+    "$HEAD_SHA" "$TREE_HASH" "${BRANCH:-unknown}" "$TS" "$ENV_HASH" "$ENV_DETAIL" "$REUSED" "$LEGS_JSON" > "$ARTIFACT_TMP"
   mv -f "$ARTIFACT_TMP" "$ARTIFACT"
   echo "GATE PASS $HEAD_SHA"
   # Prune (v4.0.1 addendum to item 17): the directory is shared across every
