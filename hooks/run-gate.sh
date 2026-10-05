@@ -7,7 +7,7 @@
 # the gate artifact that hooks/gate-before-merge.sh checks before allowing
 # a PR merge:
 #
-#   <common git dir>/gate/last-pass.<HEAD sha>.json  (v4.0.1, item 17 -- see
+#   <common git dir>/gate/last-pass.<HEAD sha>.json, or last-pass.tree-<tree>.json for a run whose tree differs from HEAD^{tree} (v4.3.1 G4)  (v4.0.1, item 17 -- see
 #   gc_gate_dir's header note in hooks/lib/git-cmd.sh for why this is the
 #   COMMON git dir, not the toplevel of the invoking checkout/worktree: it is
 #   the one location every worktree of a repo resolves to, so a gate run from
@@ -93,7 +93,7 @@ if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
   echo "Usage: bash hooks/run-gate.sh"
   echo ""
   echo "Runs the Gate command from PROJECT_CONTEXT.md (**Gate**: <command>)."
-  echo "Green: writes <common git dir>/gate/last-pass.<sha>.json (checked by gate-before-merge.sh) and prints GATE PASS <sha>."
+  echo "Green: writes <common git dir>/gate/last-pass.<sha>.json, or last-pass.tree-<tree>.json when run before the commit (checked by gate-before-merge.sh) and prints GATE PASS <sha>."
   echo "Red:   deletes the artifact and exits 1 (78 when the failure is terminal — see hooks/lib/git-cmd.sh)."
   echo "No Gate configured: prints GATE SKIP and exits 0."
   echo ""
@@ -418,8 +418,8 @@ fi
 # Sha-keyed filename, not a single fixed name (v4.0.1, item 17): the
 # directory above is now shared by every worktree of the repo, so a fixed
 # name would let two worktrees gating concurrently clobber each other's
-# artifact. See the header note for the full rationale.
-ARTIFACT="$ARTIFACT_DIR/last-pass.$HEAD_SHA.json"
+# artifact. See the header note for the full rationale. ARTIFACT itself is
+# assigned below, once the gated tree is known (v4.3.1 G4).
 
 echo "GATE: running: $GATE_CMD"
 # This `exit 1` DELIBERATELY STAYS 1 and is not a terminal 78 (v2.2.5 round 3):
@@ -510,6 +510,22 @@ RG_EMPTY_TREE="4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 RG_TREE_SUSPECT=false
 if [ "$RG_IDX_COPIED" != true ] || [ "$TREE_HASH" = "$RG_EMPTY_TREE" ]; then
   RG_TREE_SUSPECT=true
+fi
+
+# v4.3.1 G4 -- WHICH NAME. A run before the commit exists (pre-commit-test.sh's
+# Gate fallback, or a consumer's own commit-time flow) has HEAD = the PARENT,
+# so two branches off one parent both wrote last-pass.<parent>.json and the
+# second overwrote the first (yutraffic, 2026-09-30: PR 1's merge then found
+# no artifact for its tree). When the gated tree differs from HEAD^{tree} the
+# artifact is named by that tree instead; gate-before-merge.sh looks it up by
+# exact tree (tier 1b) and its tree scan matches it too. A suspect capture
+# (S-8) never names a file: it keeps the sha name, as before.
+RG_HEAD_TREE=$(git -C "$REPO_TOP" rev-parse 'HEAD^{tree}' 2>/dev/null)
+if [ "$RG_TREE_SUSPECT" != true ] && printf '%s' "$TREE_HASH" | grep -qE '^[0-9a-f]{40,64}$' \
+   && [ "$TREE_HASH" != "$RG_HEAD_TREE" ]; then
+  ARTIFACT="$ARTIFACT_DIR/last-pass.tree-$TREE_HASH.json"
+else
+  ARTIFACT="$ARTIFACT_DIR/last-pass.$HEAD_SHA.json"
 fi
 
 # v4.3.0 A2 -- ENV_HASH/ENV_DETAIL, MOVED UP from after the gate command
@@ -701,7 +717,7 @@ fi
 if [ "$GATE_RC" -eq 0 ]; then
   HEAD_SHA_AFTER=$(git -C "$REPO_TOP" rev-parse HEAD 2>/dev/null)
   if [ "$HEAD_SHA_AFTER" != "$HEAD_SHA" ]; then
-    rm -f "$ARTIFACT"
+    rm -f "$ARTIFACT" "$ARTIFACT_DIR/last-pass.$HEAD_SHA.json" "$ARTIFACT_DIR/last-pass.tree-$TREE_HASH.json"
     echo "GATE ERROR: the checkout moved while the gate was running (HEAD was ${HEAD_SHA:-unknown} at start, is ${HEAD_SHA_AFTER:-unknown} now)." >&2
     echo "The run does not describe any single state, so no artifact was written. Settle the checkout and re-run 'bash hooks/run-gate.sh'." >&2
     exit 1
@@ -777,10 +793,10 @@ elif [ "$GATE_RC" -eq "$GC_TERMINAL_RC" ]; then
   # again — which is the exact defect this branch exists to fix. The code is
   # propagated so the caller (pre-commit-test.sh) can suppress ITS retry advice
   # by the same structural test, without knowing which guard fired.
-  rm -f "$ARTIFACT"
+  rm -f "$ARTIFACT" "$ARTIFACT_DIR/last-pass.$HEAD_SHA.json" "$ARTIFACT_DIR/last-pass.tree-$TREE_HASH.json"
   exit "$GC_TERMINAL_RC"
 else
-  rm -f "$ARTIFACT"
+  rm -f "$ARTIFACT" "$ARTIFACT_DIR/last-pass.$HEAD_SHA.json" "$ARTIFACT_DIR/last-pass.tree-$TREE_HASH.json"
   echo "GATE FAILED: '$GATE_CMD' exited nonzero. Fix the failures and re-run 'bash hooks/run-gate.sh'." >&2
   exit 1
 fi

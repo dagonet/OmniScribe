@@ -18,7 +18,7 @@
 #   - v2.2.1: three more ways a gate could not determine the answer, all of
 #     which used to resolve to "allow" and now resolve to "refuse":
 #     an unparseable payload (gc_read_stdin), a parser that is present but
-#     broken (json.sh's json_probe_ok), and an unreplaced `{{...}}`
+#     broken (json_payload's canary), and an unreplaced `{{...}}`
 #     config value (gc_is_placeholder).
 #
 # WHY THESE GATES SCAN THE WHOLE STRING, and why enforce-delegation.sh does the
@@ -201,6 +201,61 @@ GC_CMD=""
 # falls to the `*)` (subcommand) arm, printing `ok`. That is the same verdict
 # the pre-v3.0.3 code gave, so this does not widen it; gc_matches_subcommand's
 # own fail-closed retry is what covers the quoted-path case for the verdict.
+# v4.3.1 G2 -- ONE definition of "this word runs git", for every recogniser.
+# git and git.exe in any case (Windows resolves GIT.EXE, Git, git.exe alike),
+# bare or after a / or \ path, with one pair of surrounding quotes removed.
+# v4.1.2-v4.3.0 accepted only `git`, `*/git`, `*\git`: `git.exe push origin
+# main` and `"git" push origin main` passed all three gates (v4.3.0 scan-fix
+# reviews). Pinned by the G2 parity rows in scripts/test-hooks.sh -- the shell
+# and the awk copies below must answer the same spellings (C-7: the awk copy
+# strips the same one pair of quotes, so a quoted "git" is a parity row too).
+# T2-1: a word is an assignment only when the text before its first `=` is a
+# shell identifier; `/opt/a=b/git` and `C:\x=y\git` are commands (git).
+gc_is_assignment_word() { # <token>
+  case "$1" in
+    [A-Za-z_]*=*) _gcaw=${1%%=*}; _gcaw=${_gcaw%+}   # T2-4: NAME+=value appends
+      case "$_gcaw" in *[!A-Za-z0-9_]*) return 1 ;; *) return 0 ;; esac ;;
+  esac
+  return 1
+}
+gc_is_git_word() { # <token>
+  _giw=$1
+  gc_is_assignment_word "$_giw" && return 1   # GIT_DIR=/x/git is never the git word
+  case "$_giw" in
+    \"*\") _giw=${_giw#\"}; _giw=${_giw%\"} ;;
+    \'*\') _giw=${_giw#\'}; _giw=${_giw%\'} ;;
+  esac
+  case "$_giw" in
+    [Gg][Ii][Tt]|[Gg][Ii][Tt].[Ee][Xx][Ee]) return 0 ;;
+    */[Gg][Ii][Tt]|*/[Gg][Ii][Tt].[Ee][Xx][Ee]) return 0 ;;
+    *\\[Gg][Ii][Tt]|*\\[Gg][Ii][Tt].[Ee][Xx][Ee]) return 0 ;;
+  esac
+  # T2-3a: the shell drops a backslash inside a word (`g\it` runs git), so a
+  # word that is git once its backslashes are gone is git too. Only adds.
+  case "$_giw" in
+    *\\*)
+      _giw=$(printf '%s' "$_giw" | tr -d '\\')
+      case "$_giw" in [Gg][Ii][Tt]|[Gg][Ii][Tt].[Ee][Xx][Ee]) return 0 ;; esac ;;
+  esac
+  return 1
+}
+# The awk copy, prepended to every awk program that opens a git invocation
+# (gc_matches_subcommand, gc_push_args). The caller passes -v bs='\' -v sq="'".
+GC_AWK_IS_GIT='function is_git(t,   l, q, i, u) { if (t ~ /^[A-Za-z_][A-Za-z0-9_]*[+]?=/) return 0; q = substr(t, 1, 1); if (length(t) > 1 && (q == "\"" || q == sq) && substr(t, length(t), 1) == q) t = substr(t, 2, length(t) - 2); l = tolower(t); if (length(l) > 4 && substr(l, length(l) - 3) == ".exe") l = substr(l, 1, length(l) - 4); if (l == "git" || l ~ /\/git$/ || substr(l, length(l) - 3, 4) == bs "git") return 1; u = l; while ((i = index(u, bs)) > 0) u = substr(u, 1, i - 1) substr(u, i + 1); return (u == "git" || u == "git.exe") }
+'
+# The hooks' fast pre-filter (no-push-main.sh, gate-before-merge.sh): any
+# token that could be git, so the segment walk runs. Wider than
+# gc_is_git_word on purpose (it only decides whether to LOOK).
+GC_GIT_WORD_RE='(^|[^[:alnum:]_-])["'"'"']?[Gg][Ii][Tt](\.[Ee][Xx][Ee])?["'"'"']?([[:space:]]|$)'
+# T2-2/T2-3a: the pre-filter must see what the walk sees. stdin -> stdout: the
+# text with quotes removed (`'git'.exe`, `g"it"`), then the same with
+# backslashes removed too (`g\it`; the first form keeps `C:\Git\git.exe`).
+gc_git_prefilter_text() {
+  _gpt=$(tr -d "\"'")
+  printf '%s\n' "$_gpt"
+  printf '%s\n' "$_gpt" | tr -d '\\'
+}
+
 gc_global_options() {
   gcgo_seg="$1"
   # `set -f` BEFORE the unquoted split (v3.0.3, phantom-token audit). Word
@@ -220,10 +275,13 @@ gc_global_options() {
     if [ "$gcgo_sawgit" -eq 0 ]; then
       case "$gcgo_tok" in
         env) continue ;;
-        git) gcgo_sawgit=1; continue ;;
-        *=*) case "$gcgo_tok" in GIT_*=*|*_GIT_*=*) printf 'env:%s\n' "${gcgo_tok%%=*}"; return ;; esac; continue ;;
-        *)   continue ;;
       esac
+      if gc_is_assignment_word "$gcgo_tok"; then
+        case "$gcgo_tok" in GIT_*=*|*_GIT_*=*) printf 'env:%s\n' "${gcgo_tok%%=*}"; return ;; esac
+        continue
+      fi
+      gc_is_git_word "$gcgo_tok" && gcgo_sawgit=1
+      continue
     fi
     case "$gcgo_tok" in
       -C)   shift; continue ;;                                    # resolved by the caller
@@ -272,7 +330,14 @@ GC_KEY_PRE="^(${GC_BOM})?[-*[:space:]]*"
 # Claude Code runs hooks in.
 gc_read_stdin() {
   GC_JSON=$(cat)
-  if ! json_have; then
+  # v4.3.1 S6b: ONE interpreter run parses the payload, returns the three fields
+  # and doubles as the validity check and the parser probe (json_payload; it was
+  # five spawns: probe, json_valid, three json_get). rc 2 = no working parser,
+  # anything else non-zero (1 = does not parse, empty stdin included; 127 =
+  # json_payload missing) refuses too; 0 = fields in JP_*.
+  json_payload "$GC_JSON"
+  gc_rc=$?
+  if [ "$gc_rc" = 2 ]; then
     GC_CWD=$(pwd)
     GC_TOOL=""
     GC_CMD=""
@@ -281,13 +346,13 @@ gc_read_stdin() {
     exit 2
   fi
   # v2.2.1: a payload that does not PARSE is not a payload with no command in
-  # it. json_get returns "" for both, and the gates read "" as "nothing to
+  # it. A field read returns "" for both, and the gates read "" as "nothing to
   # inspect, allow" — so malformed JSON, a truncated payload and empty stdin all
   # exited 0 in silence. The parser is present and working here; the INPUT is
   # the problem, so the message is deliberately distinct from the no-parser one:
   # from outside, the two used to be indistinguishable, which is what made the
   # first report of this read as a false alarm.
-  if ! json_valid "$GC_JSON"; then
+  if [ "$gc_rc" != 0 ]; then
     GC_CWD=$(pwd)
     GC_TOOL=""
     GC_CMD=""
@@ -295,14 +360,14 @@ gc_read_stdin() {
     echo "BLOCKED: hook payload did not parse — the git gates cannot inspect the command. Create <cwd>/.claude/git-guard-off to opt out." >&2
     exit 2
   fi
-  GC_TOOL=$(json_get "$GC_JSON" tool_name)
-  GC_CWD=$(json_get "$GC_JSON" cwd)
+  GC_TOOL=$JP_TOOL
+  GC_CWD=$JP_CWD
   if [ -z "$GC_CWD" ] || [ ! -d "$GC_CWD" ]; then
     GC_CWD=$(pwd)
   fi
   case "$GC_TOOL" in
     Bash|PowerShell)
-      # ACCEPTED AND DOCUMENTED, not fixed: json_get prints "" for a
+      # ACCEPTED AND DOCUMENTED, not fixed: the read yields "" for a
       # `tool_input.command` that is an object or an array, which is
       # indistinguishable here from the key being absent — and an absent key IS
       # a legitimate allow (a Bash payload carrying no command must not block
@@ -310,7 +375,7 @@ gc_read_stdin() {
       # two apart needs a "key present but non-scalar" probe that json.sh does
       # not have, and the case is not reachable from Claude Code, which always
       # sends a string. Revisit if a real payload ever shows otherwise.
-      GC_CMD=$(json_get "$GC_JSON" tool_input.command)
+      GC_CMD=$JP_CMD
       # v4.1.2 spec §1: join backslash-newline continuations ONCE, here, before
       # gc_protect_c_paths and before any reader -- gc_seg_raw, gc_segments,
       # gc_seg_quoted, gc_augmented_cmd's walk and both guards' fast-exit greps
@@ -350,7 +415,7 @@ gc_read_stdin() {
 # strictly worse. Of the three states, two are ALREADY fail-closed and only the
 # third is live:
 #
-#   stdin empty or unreadable   -> gc_read_stdin exits 2 (json_valid treats
+#   stdin empty or unreadable   -> gc_read_stdin exits 2 (json_payload treats
 #                                  empty stdin as INVALID, deliberately).
 #   no JSON parser on PATH      -> gc_read_stdin exits 2.
 #   payload parsed, GC_CMD ""   -> HERE. It splits three ways:
@@ -586,6 +651,7 @@ GC_PS_SPLIT
 # stripping would have made $1 literally `bash` under the old $1-anchor code.
 gc_script_body() {
   local seg="$1" cwd="$2" tok clean base path="" pos=1
+  GC_SB=""
   set -- $seg
   while [ $# -gt 0 ]; do
     tok="$1"
@@ -606,7 +672,11 @@ gc_script_body() {
     case "$clean" in -*) continue ;; *) path="$clean"; break ;; esac
   done
   [ -n "$path" ] || return 0
-  case "$path" in /*|[A-Za-z]:*) ;; *) path="$cwd/$path" ;; esac
+  # S-3c: the answer goes to the global GC_SB (the caller reads it, no $(...)).
+  case "$path" in
+    /*|[A-Za-z]:*) ;;
+    *) path="$cwd/$path" ;;
+  esac
   [ -f "$path" ] || return 0
   # v4.1.2 #8: whole-line comments (first non-blank character `#`) are never
   # commands, so they are stripped BEFORE the verb scan -- and only whole
@@ -615,48 +685,181 @@ gc_script_body() {
   # strip (spec §0): bash does not continue a line inside a comment, so
   # join-then-strip would merge `# note \<LF>git push origin main` into the
   # comment and delete the push.
-  head -c 16384 "$path" 2>/dev/null | grep -v '^[[:space:]]*#'
+  GC_SB=$(head -c 16384 "$path" 2>/dev/null | grep -v '^[[:space:]]*#')
 }
 
-# gc_augmented_cmd <cwd> -- GC_CMD, plus the body of every script segment
-# (gc_script_body, depth 1: a body is never itself re-scanned for further
-# script segments) appended after the segment that named it. Walks
-# gc_seg_raw's output exactly once (v4.1.1: was gc_segments -- gc_script_body
-# now needs the quote-intact form; see its own docstring), over the
-# UNMODIFIED $GC_CMD -- so the result is the same text whether a caller feeds
-# it straight back into gc_segments/gc_seg_quoted/gc_seg_raw (all three stay
-# index-aligned because they read the identical augmented string) or into a
-# plain git-token grep (v4.0.3 item 12: the pre-filter in
-# gate-before-merge.sh/no-push-main.sh must see the same text the segment
-# walk does, or a script's `git merge`/`git push` passes the "no git token"
-# fast exit before the walk that would have caught it ever runs).
-gc_augmented_cmd() {
-  local cwd="$1" out="$GC_CMD" seg body _gc_bj _gc_ps=0
+GC_NL='
+'
+# ---- v4.3.1 S-3c: THE simple-cd rule (one detector, three gates) -----------------
+# The three git gates cannot follow a shell's working directory (every model of
+# it was a fail-open one round later: `cd -`, pushd, a failed cd, CDPATH, a
+# subshell, ...), so they do not try. A command that contains a GATED ACTION --
+# a git commit, push or merge, `gh pr merge`, or a script (depth 1) whose body
+# holds one -- may change directory ONLY as ONE leading
+#   cd <absolute existing dir> &&
+# (POSIX /x, MSYS /c/x, or a drive form C:/x C:\x; optionally quoted; no $, `,
+# glob or ~ in it). Anything else is refused (gc_dir_rule returns 1; the caller
+# exits 2). It is word matching on the de-quoted text, not a parser: a directory
+# word ANYWHERE counts (`(cd`, `{ cd`, `then cd`, `builtin cd`, `bash -c 'cd ..'`).
+# The list is closed on purpose; a mechanism missing from it is a known residual
+# (CHANGELOG, Known limits). The repository for all judging is the leading cd's
+# target, else the payload cwd: GC_CWD_E.
+# Script bodies are scanned best-effort (T3c-9): a body's own cd, or a script not found, is judged in GC_CWD_E, not refused.
+GC_GATED_VERB=""
+# directory-change WORDS (case-insensitive, whole words)
+GC_DIRWORD_RE='(^|[^[:alnum:]_./-])(cd|pushd|popd|chdir|dirs|sl|shopt|eval|source|Set-Location|Push-Location|Pop-Location)([^[:alnum:]_.-]|$)|-WorkingDirectory|-wd[[:space:]]'
+# `.` only in COMMAND position (T3c-3, T3c-8, T3c-11): at the start of a line, after ; & | ( {
+# or a `-c` flag cluster (a wrapped payload, quotes already dropped), each optionally followed
+# by keywords (then do else elif if while until time ! builtin command). Matched per line.
+# The -c cluster is ONE pattern, GC_CFLAG_RE, matched case-SENSITIVELY (T3c-14): git's and
+# tar's -C is no shell -c, and the c may sit anywhere in the cluster (-cm, -ce).
+GC_CFLAG_RE='(^|[[:space:]])-[A-Za-z]*c[A-Za-z]*[[:space:]]'
+GC_SRC_KW='[[:space:]]*((then|do|else|elif|if|while|until|time|!|builtin|command)[[:space:]]+)*\.[[:space:]]'
+GC_SRC_RE="(^|[;&|({])$GC_SRC_KW"
+GC_SRC_C_RE="$GC_CFLAG_RE$GC_SRC_KW"
+# env -C / env --chdir (the option, not git's own -C after the command word)
+GC_ENVC_RE='(^|[^[:alnum:]_./-])env([[:space:]]+(-u[[:space:]]+[^[:space:]]+|-[^[:space:]]+|[^[:space:]=-][^[:space:]=]*=[^[:space:]]*))*[[:space:]]+(-C|--chdir)'
+# where git or cd lands: an assignment of CDPATH / HOME / PWD / OLDPWD. The words GIT_DIR /
+# GIT_WORK_TREE anywhere (export, read, printf -v, $env:...) are matched case-insensitively
+# by the word grep in gc_dirchange_in (T3c-10: PowerShell env names are).
+GC_DIRVAR_RE='(^|[^[:alnum:]_])(CDPATH|HOME|PWD|OLDPWD)='
+
+# gc_dirchange_in <text> -- succeeds when the text holds any of the above.
+# The value of a literal -m / -am / --message / --body / --title argument (no $ and no
+# backtick in it) is data, never executed, and is dropped first (T3c-5, T3c-7) -- unless the
+# text holds a flag cluster with a `c` in it (a shell -c payload; T3c-12, fail-closed). Then
+# quotes and backslashes are dropped (`c""d`, `\cd`), as the verb matchers do.
+gc_dirchange_in() {
+  local t=$1
+  printf '%s\n' "$t" | grep -qE "$GC_CFLAG_RE" || t=$(printf '%s' "$t" | sed -E \
+    -e "s/(^|[[:space:]])(-m|-am|--message|--body|--title)[[:space:]=]*\"[^\"\$\`]*\"/\1\2 X/g" \
+    -e "s/(^|[[:space:]])(-m|-am|--message|--body|--title)[[:space:]=]*'[^'\$\`]*'/\1\2 X/g")
+  t=$(printf '%s' "$t" | tr -d "\"'\\\\")
+  printf '%s\n' "$t" | grep -qiE "$GC_DIRWORD_RE|$GC_ENVC_RE|$GC_SRC_RE|GIT_DIR|GIT_WORK_TREE" && return 0
+  printf '%s\n' "$t" | grep -qE "$GC_DIRVAR_RE|$GC_SRC_C_RE"
+}
+
+# gc_text_has_gated <text> -- succeeds when the text holds a git commit/push/merge
+# or `gh pr merge` (the same recognisers the gates use); sets GC_GATED_VERB.
+gc_text_has_gated() {
+  local t seg v
+  t=$(printf '%s' "$1" | tr -d "\"'")
+  if printf '%s\n' "$t" | grep -qE '(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+merge'; then
+    GC_GATED_VERB="gh pr merge"; return 0
+  fi
+  printf '%s\n' "$t" | gc_git_prefilter_text | grep -qE "$GC_GIT_WORD_RE" || return 1
   while IFS= read -r seg; do
     [ -n "$seg" ] || continue
-    gc_seg_is_ps "$seg" && _gc_ps=1
-    body=$(gc_script_body "$seg" "$cwd")
-    if [ -n "$body" ]; then
+    for v in commit push merge pull; do
+      if gc_matches_subcommand "$seg" "$v"; then GC_GATED_VERB="$v"; return 0; fi
+    done
+  done <<GC_TG_SEGS
+$(printf '%s\n' "$t" | tr '|;' '\n\n' | sed 's/&&/\n/g')
+GC_TG_SEGS
+  return 1
+}
+
+# gc_collect_bodies <cwd> -- GC_BODIES: the body of every script segment of
+# $GC_CMD (gc_script_body, depth 1, resolved against <cwd>) and, when a segment
+# runs powershell/pwsh, the .ps1 bodies (S-41: no shell continuation join there).
+gc_collect_bodies() {
+  local seg body _gc_bj ps=0 d
+  GC_BODIES=()
+  while IFS= read -r seg; do
+    [ -n "$seg" ] || continue
+    gc_seg_is_ps "$seg" && ps=1
+    for d in "${GC_CANDS[@]}"; do
+      gc_script_body "$seg" "$d"
+      [ -n "$GC_SB" ] || continue
+      body=$GC_SB
       _gc_bj=$(printf '%s' "$body" | cmd_join_continuations) && [ -n "$_gc_bj" ] && body="$_gc_bj"
-    fi
-    [ -n "$body" ] && out="$out
-$body"
-  done <<GC_AUG_SEGS
+      GC_BODIES+=("$body")
+    done
+  done <<GC_CB_SEGS
 $(gc_seg_raw)
-GC_AUG_SEGS
-  # S-41: PowerShell script bodies are appended AFTER the shell join (a `\` at
-  # the end of a .ps1 line is not a continuation).
-  if [ "$_gc_ps" = 1 ]; then
-    body=$(gc_ps_script_bodies "$cwd")
-    [ -n "$body" ] && out="$out
-$body"
+GC_CB_SEGS
+  if [ "$ps" = 1 ]; then
+    for d in "${GC_CANDS[@]}"; do
+      body=$(gc_ps_script_bodies "$d")
+      [ -z "$body" ] || GC_BODIES+=("$body")
+    done
   fi
+  return 0
+}
+
+# gc_dir_cands <payload cwd> <E> <text> -- GC_CANDS, a FLAT list (no order, no state):
+# E, the payload cwd, and every literal cd/pushd target in <text> (absolute, or
+# relative to the payload cwd). A relative script path is looked up under each.
+gc_dir_cands() {
+  local t d re='(^|[^[:alnum:]_./-])(cd|pushd)[[:space:]]+(-[^[:space:]]*[[:space:]]+)*([^[:space:];&|()<>]+)'
+  GC_CANDS=("$2")
+  [ "$1" = "$2" ] || GC_CANDS+=("$1")
+  t=$(printf '%s' "$3" | tr -d "\"'")
+  while [[ $t =~ $re ]]; do
+    d=${BASH_REMATCH[4]}
+    t=${t#*"${BASH_REMATCH[0]}"}
+    case "$d" in *\$*|*\`*|*[\*\?\[]*|\~*) continue ;; esac
+    case "$d" in /*|[A-Za-z]:[/\\]*) ;; *) d="$1/$d" ;; esac
+    GC_CANDS+=("$d")
+  done
+}
+
+# gc_augmented_cmd <cwd> -- GC_CMD, then one newline and each script body. The
+# text the gates match on, and what the cmd_len diagnostic measures.
+gc_augmented_cmd() {
+  local out="$GC_CMD" b
+  GC_CANDS=("$1")
+  gc_collect_bodies
+  for b in "${GC_BODIES[@]}"; do out="$out$GC_NL$b"; done
   printf '%s' "$out"
 }
 
-# Prints the `cd <target>` argument of a segment, if the segment is a bare cd.
-gc_cd_target() {
-  printf '%s\n' "$1" | sed -n 's/^[[:space:]]*cd[[:space:]]\+\([^[:space:]]\+\)[[:space:]]*$/\1/p' | head -1
+# gc_dir_rule <gate> <payload cwd> -- the rule. Sets GC_CWD_E and widens GC_CMD
+# with the script bodies; returns 1 (after printing the refusal) when a gated
+# command changes directory in any other way. Call it in the main shell.
+gc_dir_rule() {
+  local gate="$1" typed="$GC_CMD" rest="$GC_CMD" tgt="" b dc
+  local re_dq='^[[:space:]]*cd[[:space:]]+"([^"]*)"[[:space:]]*&&(.*)$'
+  local re_sq="^[[:space:]]*cd[[:space:]]+'([^']*)'[[:space:]]*&&(.*)\$"
+  local re_bare='^[[:space:]]*cd[[:space:]]+([^[:space:]"'"'"';&|()<>]+)[[:space:]]*&&(.*)$'
+  GC_CWD_E="$2"
+  if [[ $typed =~ $re_dq ]] || [[ $typed =~ $re_sq ]] || [[ $typed =~ $re_bare ]]; then
+    tgt=${BASH_REMATCH[1]}
+    case "$tgt" in
+      /*|[A-Za-z]:[/\\]*) ;;
+      *) tgt="" ;;
+    esac
+    case "$tgt" in *[\$\`\*\?\[~]*) tgt="" ;; esac
+    if [ -n "$tgt" ] && [ -d "$tgt" ]; then
+      rest=${BASH_REMATCH[2]}
+      GC_CWD_E="$tgt"
+    fi
+  fi
+  # the typed text changes directory in a way other than the one leading cd?
+  # Then a relative script path cannot be pinned to one directory: look it up under
+  # the payload cwd and every literal cd target (T3c-1); not found anywhere = not scanned.
+  if gc_dirchange_in "$rest"; then dc=1; gc_dir_cands "$2" "$GC_CWD_E" "$typed"; else dc=0; GC_CANDS=("$GC_CWD_E"); fi
+  gc_collect_bodies
+  GC_CMD="$typed"
+  for b in "${GC_BODIES[@]}"; do
+    GC_CMD="$GC_CMD$GC_NL$b"
+  done
+  # ... refused when the command (or a script it runs) holds a gated verb
+  if [ "$dc" = 1 ]; then
+    if gc_text_has_gated "$typed"; then gc_dir_refuse "$gate"; return 1; fi
+    for b in "${GC_BODIES[@]}"; do
+      if gc_text_has_gated "$b"; then gc_dir_refuse "$gate"; return 1; fi
+    done
+  fi
+  return 0
+}
+gc_dir_refuse() { # <gate>
+  local v="${GC_GATED_VERB:-commit}"
+  if [ "$v" = "gh pr merge" ]; then
+    echo "BLOCKED: $1: a directory change in a command with $v cannot be checked -- use a single leading \`cd <absolute dir> && ...\`." >&2
+  else
+    echo "BLOCKED: $1: a directory change in a command with $v cannot be checked -- use \`git -C <dir> $v\`, or a single leading \`cd <absolute dir> && ...\`." >&2
+  fi
 }
 
 # gc_git_c IS GONE (v3.0.3 defect 1). It required `-C` to sit immediately after
@@ -759,9 +962,10 @@ gc_c_resolves() {
   gccr_cls=$(printf '%s\n' "$gccr_out" | sed -n 1p)
   case "$gccr_cls" in
     1)
-      case "$1" in
-        /*|[A-Za-z]:[/\\]*) [ -d "$1" ] && printf '%s\n' "$1" ;;
-        *)                  [ -d "$2/$1" ] && printf '%s\n' "$2/$1" ;;
+      gccr_op=$1
+      case "$gccr_op" in
+        /*|[A-Za-z]:[/\\]*) [ -d "$gccr_op" ] && printf '%s\n' "$gccr_op" ;;
+        *)                  [ -d "$2/$gccr_op" ] && printf '%s\n' "$2/$gccr_op" ;;
       esac
       ;;
     2)
@@ -847,9 +1051,7 @@ gc_dash_c_list() {
   printf '%s\n' "$1" | tr ' \t' '\n\n' | while IFS= read -r gcdl_t; do
     [ -n "$gcdl_t" ] || continue
     if [ "$gcdl_seen" -eq 0 ]; then
-      case "$gcdl_t" in
-        git|*/git|*\\git) gcdl_seen=1 ;;
-      esac
+      gc_is_git_word "$gcdl_t" && gcdl_seen=1
       continue
     fi
     case "$gcdl_want" in
@@ -1461,7 +1663,8 @@ gc_on_main() {
 #      warning, which would let a bare word merely ENDING in "git" (`notgit`)
 #      open the walk. FIX: `is_git()` below tests equality, a `/git` suffix, or
 #      a literal `\git` suffix via `substr()`, none of which depend on
-#      backslash-in-regex escaping semantics.
+#      backslash-in-regex escaping semantics. v4.3.1 G2: is_git() now comes
+#      from GC_AWK_IS_GIT (git/git.exe, any case).
 #   F3 (quoted wrappers and substitution openers): the deleted fast path was,
 #      incidentally, the only thing that matched `bash -c "git commit -m x"`,
 #      `sh -lc "git commit -m x"`, `(git commit -m x)`, and — this is also how
@@ -1501,10 +1704,9 @@ gc_matches_subcommand() {
   # more thing an unusual awk could get creatively wrong; passed in as data
   # instead, so is_git()'s backslash-path test does not depend on any awk's
   # string-literal escape handling at all.
-  printf '%s\n' "$1" | tr ' \t' '\n\n' | awk -v verb="$2" -v first_only="$_gc_first_only" -v sq="'" -v bs='\' '
+  printf '%s\n' "$1" | tr ' \t' '\n\n' | awk -v verb="$2" -v first_only="$_gc_first_only" -v sq="'" -v bs='\' "$GC_AWK_IS_GIT"'
     BEGIN { seen_git = 0; want_value = 0; wrap = "^[\"($<>`" sq "]+|[\")`" sq "]+$" }
     $0 == "" { next }
-    function is_git(t) { return (t == "git" || t ~ /\/git$/ || substr(t, length(t) - 3, 4) == bs "git") }
     {
       tok = $0
       gsub(wrap, "", tok)                  # quoted / parenthesised wrappers: bash -c "git …", (git …)
@@ -1559,13 +1761,13 @@ gc_matches_subcommand() {
 # past it and finding the real `push` token keeps that case covered while
 # still being non-greedy: only the FIRST `push` token ends the scan.
 gc_push_args() {
-  printf '%s\n' "$1" | tr ' \t' '\n\n' | awk '
+  printf '%s\n' "$1" | tr ' \t' '\n\n' | awk -v sq="'" -v bs='\' "$GC_AWK_IS_GIT"'
     BEGIN { seen_git = 0; want_value = 0; found = 0 }
     $0 == "" { next }
     {
       tok = $0
       if (!seen_git) {
-        if (tok == "git" || tok ~ /\/git$/ || tok ~ /\\git$/) seen_git = 1
+        if (is_git(tok)) seen_git = 1
         next
       }
       if (found) { print tok; next }

@@ -47,7 +47,7 @@ Look-up reference, not a read-through — load on demand (`CLAUDE.md` -> *Sessio
 - **T1 delegated fixes** (see Tiered Sprint Model) — brief inline, no plan file needed. **The PO NEVER edits code, at any tier.** Write surface: `docs/plans/`, `PROJECT_STATE.md`, `PROJECT_CONTEXT.md`, `.claude/`, `AGENT_TEAM.md` — enforced by `hooks/enforce-delegation.sh`.
 - **Never reviews code inline** — `code-reviewer` is spawned T2+; T1 relies on the coder's gate run.
 - **Read discipline**: Read/Grep only for targeted verification (1-2 files) and orchestration files; open-ended exploration goes to **Explore** (see Model & Effort Policy).
-- **Never runs builds or tests** — coders gate, tester verifies, `ops` handles env/tool work; PO verifies via `.gate/last-pass.json`.
+- **Never runs builds or tests** — coders gate, tester verifies, `ops` handles env/tool work; PO verifies via the gate artifact.
 - Closes tasks after merge; does **NOT** block the merge pipeline.
 - **Open Brain context mediation**: search before spawning, include findings, capture insights after (*Open Brain Context for Agents*).
 - **Spawn-prompt skill injection**: look up `subagent_type` in the Spawn-Prompt Binding Table and include a `## Required Skills` block verbatim (`hooks/require-skills-block.sh` enforces this). Omit for `code-reviewer`.
@@ -210,9 +210,9 @@ After review and testing pass, the developer executes the merge — git/GitHub M
 3. Verify CI via gh_workflow_list after push (open the PR first — a bare branch
    push produces no run); fix before merging if it fails.
 4. Run the gate on the rebased head: `bash hooks/run-gate.sh` writes
-   `.gate/last-pass.json` for the current HEAD — the ONLY accepted green;
+   the gate artifact for the current HEAD — the ONLY accepted green;
    commit exactly what was gated. `hooks/gate-before-merge.sh` hard-blocks
-   merge tools without a fresh, SHA-matching artifact (< 60 min) unless
+   merge tools without a fresh, matching artifact (< 60 min) unless
    PROJECT_CONTEXT.md's **Gate** field is unset.
 5. Squash-merge via GitHub MCP; verify it succeeded.
 6. Remove the worktree, delete the local and remote branch, notify the PO.

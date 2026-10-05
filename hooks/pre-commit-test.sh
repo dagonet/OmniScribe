@@ -31,6 +31,9 @@
 #     message names the whole command, so do not read a failure as "everything
 #     after the first project was fine"; nothing after it was executed at all.
 
+# v4.3.1 T1-5: bash imports SECONDS from the environment; reset it so the hook-wide ceiling counts from THIS hook's start.
+SECONDS=0
+
 # Fail CLOSED when the sourced lib is missing: without it every gc_* helper is
 # undefined, GC_CMD stays empty, and this gate would exit 0 on every commit.
 lib="$(dirname "$0")/lib/git-cmd.sh"
@@ -242,6 +245,9 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
     # `$_pn_base` vs `$_pn_top`: a bind mount or a symlinked checkout could
     # make the TEXT of the two paths differ while the DIRECTORY is the same
     # one, or vice versa -- physical identity is the actual question.
+    # v4.3.1 G6: REPO_PATH is now always the top-level, so this comparison holds
+    # for every commit that reaches a Test; it stays as the guard for any future
+    # path that sets PCT_ARTIFACT_BASE elsewhere.
     _pn_base_phys=$(cd "$_pn_base" 2>/dev/null && pwd -P)
     _pn_top_phys=$(cd "$_pn_top" 2>/dev/null && pwd -P)
     if [ -n "$_pn_base_phys" ] && [ "$_pn_base_phys" = "$_pn_top_phys" ]; then
@@ -278,6 +284,175 @@ pct_prune() {
   find "$1" -maxdepth 1 \( -name 'last-precommit.*.json' -o -name 'last-precommit-noop.*.json' \) -mmin "+$_pp_min" -delete 2>/dev/null || true
 }
 
+# v4.3.1 G1 -- THE PER-COMMIT RUN HAS A BUDGET BELOW THE HARNESS HOOK TIMEOUT.
+# MM-Agent, 2026-09-30: a 641 s and a 1981 s Test outlived the harness's 600 s
+# hook timeout; the harness killed THIS hook, treated that as a NON-blocking
+# error and let the commit through, while the Test's children ran on as
+# orphans. The run now happens in a child this hook owns, in its own process
+# group (set -m), and stops at the budget: every member's native Windows
+# subtree dies first (taskkill //T on /proc/<pid>/winpid -- measured
+# 2026-10-02: taskkill on the leader's winpid ALONE leaves cygwin and native
+# grandchildren running, because a cygwin exec breaks the Windows parent
+# chain), then the group itself; the commit is REFUSED (exit 2). Every
+# registration carries "timeout": PCT_TIMEOUT_MAX + 60 (consistency check 64),
+# so this budget fires before the harness does -- PROVIDED the work around the
+# run fits in the 60 s margin, which a loaded machine can break (measured: one
+# running gate slows every spawn 10-30x). Hence the hook-wide ceiling below.
+PCT_TIMEOUT_DEFAULT=540
+PCT_TIMEOUT_MIN=30
+PCT_TIMEOUT_MAX=3300
+# v4.3.1 T1-1: the per-run budget counts from the fork; the harness counts from
+# hook start. The run therefore ALSO stops when bash $SECONDS (hook start)
+# reaches the registration timeout (PCT_TIMEOUT_MAX + 60) minus
+# PCT_CEIL_RESERVE, whichever limit comes first. 45 s is what the kill path
+# needs after the ceiling trips: up to 5 kill rounds (one taskkill spawn per
+# group member each, 1 s sleeps) plus the record, prune and refusal text, at
+# spawn latencies several times the idle ones; the remaining 15 s of the margin
+# absorb poll granularity.
+PCT_CEIL_RESERVE=45
+
+# pct_ceiling -- the hook-wide ceiling in seconds since hook start.
+# PCT_TEST_CEILING_TESTONLY_S is for the fixtures only and can only LOWER it
+# (a whole number below the real ceiling), never raise it past the harness timeout.
+pct_ceiling() {
+  _pc_c=$((PCT_TIMEOUT_MAX + 60 - PCT_CEIL_RESERVE))
+  case "${PCT_TEST_CEILING_TESTONLY_S:-}" in
+    ''|*[!0-9]*) ;;
+    *) [ "${#PCT_TEST_CEILING_TESTONLY_S}" -le 4 ] && [ "$PCT_TEST_CEILING_TESTONLY_S" -ge 1 ] && [ "$PCT_TEST_CEILING_TESTONLY_S" -lt "$_pc_c" ] && _pc_c=$PCT_TEST_CEILING_TESTONLY_S ;;
+  esac
+  printf '%s\n' "$_pc_c"
+}
+
+# pct_budget <repo> -- the budget in seconds: **Test timeout** when it is a
+# whole number in PCT_TIMEOUT_MIN..PCT_TIMEOUT_MAX, else (WARN) the default.
+# Unset, empty or an unfilled {{...}} placeholder is the default, silently.
+# PCT_TEST_TIMEOUT_TESTONLY_S is for the fixtures only and can only SHORTEN the
+# budget (1-29 s, below the configurable range): a larger value would let the
+# harness kill the hook first, which is the fail-open this budget closes.
+pct_budget() {
+  _pb_v=$(grep -E "${GC_KEY_PRE}\*\*Test timeout\*\*:" "$1/PROJECT_CONTEXT.md" 2>/dev/null | sed -E "s/${GC_KEY_PRE}\\*\\*Test timeout\\*\\*:[[:space:]]*//;s/[[:space:]]*\$//;s/^\`//;s/\`\$//" | head -1)
+  case "$_pb_v" in *\{\{*\}\}*) _pb_v="" ;; esac
+  _pb_b=$PCT_TIMEOUT_DEFAULT
+  if [ -n "$_pb_v" ]; then
+    case "$_pb_v" in
+      *[!0-9]*)
+        echo "pre-commit-test: WARN **Test timeout** '$_pb_v' is not a whole number of seconds ($PCT_TIMEOUT_MIN-$PCT_TIMEOUT_MAX) -- using $PCT_TIMEOUT_DEFAULT" >&2 ;;
+      *)
+        if [ "${#_pb_v}" -le 5 ] && [ "$_pb_v" -ge "$PCT_TIMEOUT_MIN" ] && [ "$_pb_v" -le "$PCT_TIMEOUT_MAX" ]; then
+          _pb_b=$_pb_v
+        else
+          echo "pre-commit-test: WARN **Test timeout** '$_pb_v' is outside $PCT_TIMEOUT_MIN-$PCT_TIMEOUT_MAX -- using $PCT_TIMEOUT_DEFAULT" >&2
+        fi ;;
+    esac
+  fi
+  case "${PCT_TEST_TIMEOUT_TESTONLY_S:-}" in
+    [1-9]|1[0-9]|2[0-9]) _pb_b=$PCT_TEST_TIMEOUT_TESTONLY_S ;;
+  esac
+  printf '%s\n' "$_pb_b"
+}
+
+# pct_group_members <pgid> -- how many live processes are still in the group.
+# Git Bash/Cygwin: /proc/<pid>/pgid (read with the builtin -- no spawn per
+# process). Elsewhere: ps -A -o pgid=.
+pct_group_members() {
+  _pg_n=0
+  if [ -r "/proc/$$/pgid" ]; then
+    for _pg_d in /proc/[0-9]*; do
+      _pg_g=""
+      { read -r _pg_g < "$_pg_d/pgid"; } 2>/dev/null
+      [ "$_pg_g" = "$1" ] && _pg_n=$((_pg_n + 1))
+    done
+  else
+    _pg_n=$(ps -A -o pgid= 2>/dev/null | awk -v g="$1" '$1 == g { n++ } END { print n + 0 }')
+  fi
+  printf '%s\n' "${_pg_n:-0}"
+}
+
+# pct_kill_group <pgid> -- every member's native subtree first (Git Bash), then
+# the whole group.
+pct_kill_group() {
+  if [ -r "/proc/$$/pgid" ]; then
+    for _pk_d in /proc/[0-9]*; do
+      _pk_g=""
+      _pk_w=""
+      { read -r _pk_g < "$_pk_d/pgid"; } 2>/dev/null
+      [ "$_pk_g" = "$1" ] || continue
+      { read -r _pk_w < "$_pk_d/winpid"; } 2>/dev/null
+      [ -n "$_pk_w" ] && taskkill //F //T //PID "$_pk_w" >/dev/null 2>&1
+    done
+  fi
+  kill -KILL -- "-$1" 2>/dev/null
+  return 0
+}
+
+# pct_run_bounded <budget_s> <outfile> <command...> -- runs the command in a
+# subshell (the containment of a consumer value's exit/exec, v2.2.5 round 5,
+# lives HERE now), in its own process group, stdin from /dev/null, output to
+# <outfile>. Sets PCT_RC to its exit status, or to the string "timeout" when
+# the budget ran out and the group was killed; PCT_LEFT counts survivors.
+# $SECONDS, not date: no spawn per tick, and a loaded machine slows the loop,
+# not the clock.
+pct_run_bounded() {
+  _rb_budget=$1
+  _rb_out=$2
+  shift 2
+  PCT_LEFT=0
+  set -m
+  ( "$@" ) > "$_rb_out" 2>&1 < /dev/null &
+  _rb_pid=$!
+  set +m
+  # Its own process group no longer dies with this hook: if the hook itself is
+  # signalled (a cancel, or a harness timeout on a registration without the
+  # field), take the group down first. An uncatchable kill (SIGKILL,
+  # TerminateProcess) still orphans it -- a stated Known limit.
+  trap 'pct_kill_group "$_rb_pid"; exit 2' TERM INT HUP
+  _rb_t0=$SECONDS
+  _rb_ceil=$(pct_ceiling)
+  PCT_CEIL_HIT=0
+  while kill -0 "$_rb_pid" 2>/dev/null; do
+    # Either limit stops the run: the per-run budget (counted from the fork) or
+    # the hook-wide ceiling (bash $SECONDS counts from hook start).
+    if [ "$SECONDS" -ge "$_rb_ceil" ] && [ $((SECONDS - _rb_t0)) -lt "$_rb_budget" ]; then
+      PCT_CEIL_HIT=1
+    fi
+    if [ $((SECONDS - _rb_t0)) -ge "$_rb_budget" ] || [ "$PCT_CEIL_HIT" -eq 1 ] || [ "$SECONDS" -ge "$_rb_ceil" ]; then
+      pct_kill_group "$_rb_pid"
+      wait "$_rb_pid" 2>/dev/null
+      for _rb_i in 1 2 3 4 5; do
+        PCT_LEFT=$(pct_group_members "$_rb_pid")
+        [ "$PCT_LEFT" -eq 0 ] 2>/dev/null && break
+        pct_kill_group "$_rb_pid"
+        sleep 1
+      done
+      trap - TERM INT HUP
+      PCT_RC=timeout
+      return 0
+    fi
+    sleep 1
+  done
+  wait "$_rb_pid"
+  PCT_RC=$?
+  trap - TERM INT HUP
+  return 0
+}
+
+# pct_refuse_timeout <budget> <label> -- the over-budget refusal. Never returns.
+pct_refuse_timeout() {
+  if [ "${PCT_CEIL_HIT:-0}" -eq 1 ]; then
+    echo "BLOCKED: pre-commit-test: the hook-wide ceiling ($(pct_ceiling) s since hook start, set by the harness timeout $((PCT_TIMEOUT_MAX + 60)) s) was reached before the $1 s budget ran out -- commit refused. Shorten the per-commit Test or lower **Test timeout**." >&2
+  else
+  echo "BLOCKED: pre-commit-test: Test exceeded its $1 s budget -- commit refused. Shorten the per-commit Test (fast subset) and move the full suite to **Gate** / **Gate extra**, or raise **Test timeout** (max $PCT_TIMEOUT_MAX)." >&2
+  fi
+  echo "  stopped: '$2' and every process it started" >&2
+  if [ "${PCT_LEFT:-0}" -gt 0 ] 2>/dev/null; then
+    echo "  WARN: $PCT_LEFT process(es) of that run were still alive after the kill -- check for orphans before re-running" >&2
+  fi
+  echo "--- last 20 lines ---" >&2
+  tail -20 "$OUT" >&2
+  rm -f "$OUT"
+  exit 2
+}
+
 gc_read_stdin
 gc_guard_off && exit 0
 
@@ -304,6 +479,28 @@ fi
 
 [ -n "$GC_CMD" ] || { pct_note empty-cmd -1; exit 0; }
 
+# v4.3.1 S6 -- EXACT FAST PATH for a command that cannot reach a commit. This
+# hook runs on EVERY Bash call; the walk below cost ~1.4 s on an idle machine
+# for `ls -la`. Everything past this point can only refuse a command whose text
+# (quotes and backslashes removed, case ignored) holds one of these words:
+#   commit            the gated verb itself (`git com"mit"`, `git com\mit`, `GIT COMMIT`);
+#   merge pull push   gc_dir_rule (simple-cd rule) refuses these, and `gh pr merge`,
+#                     after a directory change even with no `commit` in the text;
+#   sh                bash/sh/pwsh/powershell -- the words that make the walk read
+#                     a script body (gc_script_body, gc_seg_is_ps);
+#   source, `.`       `source x` and the dot-source `. x` (a `.` followed by
+#                     whitespace or end of text -- broader than a segment-head
+#                     test on purpose: a superset is simpler and fail-closed).
+# With none of them nothing below can refuse, so the walk is skipped and the same
+# no-op record is written. Zero forks: pure parameter expansion and case. Any
+# doubt keeps the walk -- this only ever skips work.
+pct_t=${GC_CMD//\"/}; pct_t=${pct_t//\'/}; pct_t=${pct_t//\\/}
+shopt -s nocasematch
+case "$pct_t" in
+  *commit*|*merge*|*pull*|*push*|*sh*|*source*|*.[[:space:]]*|*.) shopt -u nocasematch ;;
+  *) shopt -u nocasematch; pct_note no-commit-segment -1; exit 0 ;;
+esac
+
 # v4.0.3 item 12 -- widen GC_CMD to include the body of any script segment it
 # invokes (`bash|sh|source|. <path>`, depth 1) BEFORE splitting into segments,
 # so a `git commit` inside such a script is gated exactly as if typed. See
@@ -314,10 +511,14 @@ fi
 # The command as typed, before the script-body widening: the **Test paths** skip
 # (v4.3.0 A1, S-28) judges THIS text, never the widened one.
 PCT_RAW_CMD="$GC_CMD"
-GC_CMD="$(gc_augmented_cmd "$GC_CWD")"
+# v4.3.1 S-3c: gc_dir_rule is the simple-cd rule (lib): it widens GC_CMD as above
+# and refuses a gated command that changes directory in any way but one leading
+# `cd <absolute dir> &&`. GC_CWD_E is the directory everything is judged in.
+gc_dir_rule pre-commit-test "$GC_CWD" || { pct_note dir-change -1; exit 2; }
 
-# Find the repo of the first `git commit` in the command line (if any).
-base="$GC_CWD"
+# Judge every commit segment of the command line (v4.3.1 G6 / T3-3), not only
+# the first.
+base="$GC_CWD_E"
 REPO_PATH=""
 segments=$(gc_segments)
 # gc_seg_quoted (lib) is a sibling of gc_segments: one 0|1 line per line of
@@ -327,25 +528,28 @@ segments=$(gc_segments)
 GC_SEG_QUOTED=$(gc_seg_quoted)
 pct_seg_quoted="$GC_SEG_QUOTED"
 
+# Every commit segment runs in GC_CWD_E (S-3c): the one leading cd's target, else
+# the payload cwd. Its repository is the top-level of that directory.
+pct_tops=""
+pct_ntops=0
+pct_seen_commit=0
 pct_seg_idx=0
 while IFS= read -r seg; do
   pct_seg_idx=$((pct_seg_idx + 1))
   [ -n "$seg" ] || continue
 
-  cdt=$(gc_cd_target "$seg")
-  if [ -n "$cdt" ]; then
-    base=$(gc_resolve "$base" "$cdt")
-    continue
-  fi
-
   if gc_matches_subcommand "$seg" "commit"; then
     # v3.1 -- resolve matched_in_quoted as soon as the commit segment is
     # known, before any of the pct_note calls below (global-refused,
-    # unresolved-c, gate, test) that must all carry it.
-    case "$(printf '%s\n' "$pct_seg_quoted" | sed -n "${pct_seg_idx}p")" in
-      1) PCT_QUOTED=true ;;
-      *) PCT_QUOTED=false ;;
-    esac
+    # unresolved-c, gate, test) that must all carry it. (The FIRST commit
+    # segment's flag stands for the artifact.)
+    if [ "$pct_seen_commit" = 0 ]; then
+      case "$(printf '%s\n' "$pct_seg_quoted" | sed -n "${pct_seg_idx}p")" in
+        1) PCT_QUOTED=true ;;
+        *) PCT_QUOTED=false ;;
+      esac
+    fi
+    pct_seen_commit=1
     # --- v3.0.3 (finding 62), one block, deliberately small ------------------
     # A global before `commit` used to make the line above false, so this gate
     # exited 0 in 0 s having run no tests: `git -P commit -m x` and
@@ -404,15 +608,45 @@ while IFS= read -r seg; do
       exit 2
     fi
 
-    REPO_PATH=$(gc_repo_for "$seg" "$base")
-    break
+    # v4.3.1 G6 (ruling P-2) -- READ THE CONFIG AT THE REPOSITORY TOP-LEVEL.
+    # gc_repo_for is the directory the commit segment runs in (the leading cd, a
+    # payload cwd of sub/, a `git -C sub`), and the reads below used to take
+    # $REPO_PATH/PROJECT_CONTEXT.md literally: from a subdirectory without one
+    # the "nothing to run" arm allowed the commit with no Test (measured 0 at
+    # 3a901fe). A nested repository is its own top-level. No top-level ->
+    # refuse: this gate cannot show the tests passed, and git would fail such a
+    # commit anyway.
+    pct_rp=$(gc_repo_for "$seg" "$base")
+    PCT_TOP=$(git -C "$pct_rp" rev-parse --show-toplevel 2>/dev/null)
+    if [ -z "$PCT_TOP" ] || [ ! -d "$PCT_TOP" ]; then
+      pct_note no-toplevel -1
+      echo "BLOCKED: pre-commit-test: cannot find the repository top-level for '$pct_rp' -- refusing rather than committing with no Test. Run the commit from inside the repository (or pass git -C <repo>)." >&2
+      exit 2
+    fi
+    case "$GC_NL$pct_tops$GC_NL" in
+      *"$GC_NL$PCT_TOP$GC_NL"*) ;;
+      *) pct_tops="$pct_tops$GC_NL$PCT_TOP"; pct_ntops=$((pct_ntops + 1)); REPO_PATH="$PCT_TOP" ;;
+    esac
   fi
 done <<GC_SEGMENTS
 $segments
 GC_SEGMENTS
 
 # Not a commit -- nothing to gate.
-[ -n "$REPO_PATH" ] || { pct_note no-commit-segment -1; exit 0; }
+[ "$pct_seen_commit" = 1 ] || { pct_note no-commit-segment -1; exit 0; }
+# v4.3.1 T3-3: commits in more than one repository in one command. One Test
+# cannot answer for both, and judging only the first let a failing repository's
+# commit through behind a green one. Fail closed.
+if [ "$pct_ntops" -gt 1 ]; then
+  pct_note multi-repo -1
+  {
+    echo "BLOCKED: pre-commit-test: this command commits in more than one repository (or in one of several repositories the hook cannot tell apart):"
+    printf '%s\n' "$pct_tops" | sed '/^$/d;s/^/  /'
+    echo "  verdict: refused. One Test cannot answer for several repositories -- commit each repository in a separate call."
+  } >&2
+  exit 2
+fi
+[ -n "$REPO_PATH" ] || { pct_note no-toplevel -1; echo "BLOCKED: pre-commit-test: cannot find the repository top-level -- refusing rather than committing with no Test." >&2; exit 2; }
 
 # From here the artifact goes to the repo the COMMIT targets, which `git -C` and
 # a `cd` clause can point anywhere. Absolute, and fixed before any cd below.
@@ -666,8 +900,12 @@ if [ -z "$TEST_CMD" ]; then
       cd "$REPO_PATH" || { pct_note gate -1; echo "BLOCKED: pre-commit-test: cannot enter the repository at '$REPO_PATH' — re-run the commit once the path is reachable." >&2; exit 2; }
       OUT=$(mktemp 2>/dev/null || echo "$REPO_PATH/.pre-commit-test.out")
       pct_capture_tree
-      bash "$RUN_GATE" > "$OUT" 2>&1
-      PCT_RC=$?
+      PCT_BUDGET=$(pct_budget "$REPO_PATH")
+      pct_run_bounded "$PCT_BUDGET" "$OUT" bash "$RUN_GATE"
+      if [ "$PCT_RC" = timeout ]; then
+        pct_note gate '"timeout"'
+        pct_refuse_timeout "$PCT_BUDGET" "run-gate.sh"
+      fi
       pct_note gate "$PCT_RC"
       if [ "$PCT_RC" -eq 0 ]; then
         rm -f "$OUT"
@@ -759,9 +997,14 @@ PCT_T0=$(date +%s 2>/dev/null || echo 0)
 # below). R5g in scripts/test-hooks.sh drives this BEHAVIOURALLY -- the source
 # censuses in verify-template-consistency.sh cannot reach a value that arrives
 # as config DATA rather than as hook SOURCE.
+# v4.3.1 G1: that subshell now lives in pct_run_bounded, which also gives it its own process group and the budget.
 pct_capture_tree
-( eval "$TEST_CMD" ) > "$OUT" 2>&1
-PCT_RC=$?
+PCT_BUDGET=$(pct_budget "$REPO_PATH")
+pct_run_bounded "$PCT_BUDGET" "$OUT" eval "$TEST_CMD"
+if [ "$PCT_RC" = timeout ]; then
+  pct_note test '"timeout"'
+  pct_refuse_timeout "$PCT_BUDGET" "$TEST_CMD"
+fi
 # v3.0.3 diagnostic. Records the child's number as data; nothing here BRANCHES
 # on it — see the long note below and census 21c-2h in
 # scripts/verify-template-consistency.sh.

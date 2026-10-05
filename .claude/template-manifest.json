@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v4.3.0",
-  "template_commit": "3a901fe397b656f28bd8611bb6deca0f35678aa4",
+  "template_version": "v4.3.1",
+  "template_commit": "b8608a80258175f3c4faaa9db983876ef024081f",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/agent-grants.json": {
@@ -59,7 +59,7 @@
       "ownership": "template"
     },
     ".claude/settings.json": {
-      "hash": "sha256:35c8743b462073c8b19eedf649fc966b189efcecaa8a8c547ed0a891be924888",
+      "hash": "sha256:cb5e545bb1eb91f77a494e538863c80143d622b20c5ef464b5ee5219b6f6317c",
       "ownership": "template"
     },
     ".editorconfig": {
@@ -73,7 +73,7 @@
       "ownership": "once"
     },
     "AGENT_TEAM.md": {
-      "hash": "sha256:d5193dc917c60000c8a71cff2c2b76440addba5a5395e2b69c99216055e22dde",
+      "hash": "sha256:7aecc636dd7e8fc4fd605287b217f53dc56d91d25761e84708e2f870c080142f",
       "ownership": "template"
     },
     "CLAUDE.md": {
@@ -119,15 +119,15 @@
       "ownership": "template"
     },
     "hooks/gate-before-merge.sh": {
-      "hash": "sha256:f7885772881a5c37adb98f7771c2e0755bc3e572d72bc3e9c264138ff0bab0f0",
+      "hash": "sha256:331d51946d2f7f49caa47931ac35e8a8f1c14bce3377600b2d81998d09b3089f",
       "ownership": "template"
     },
     "hooks/lib/git-cmd.sh": {
-      "hash": "sha256:165aa6170aeae1336fbf4e25dfc302b973157bc273552b57de737bf08f062e7e",
+      "hash": "sha256:36dff3a5b6b6c7e0e03382b079718df857f6addb214d64f0911a684c3dcc4709",
       "ownership": "template"
     },
     "hooks/lib/json.sh": {
-      "hash": "sha256:2064949551fb8fe2148206513fcbda38081d54c6948b145c2f4be1e8a97f1032",
+      "hash": "sha256:71566a4c77b4d20bb08f05cb19847d8e24a650fa81f784706279cedb6a72bc51",
       "ownership": "template"
     },
     "hooks/model-floor.sh": {
@@ -135,7 +135,7 @@
       "ownership": "template"
     },
     "hooks/no-push-main.sh": {
-      "hash": "sha256:b3473122dc2ba8aa266e275bd8eb6de26e47c824ada365f874a245c3e1642f51",
+      "hash": "sha256:e6132b78627223d28fa9af007e88c64f9b702b0c6d1f425d184dc5ae3ffa2731",
       "ownership": "template"
     },
     "hooks/post-edit-build.sh": {
@@ -143,7 +143,7 @@
       "ownership": "template"
     },
     "hooks/pre-commit-test.sh": {
-      "hash": "sha256:b5210c77a2296102afc2d3318a1f2f3f28c515eff76375180bab0aec94f40b50",
+      "hash": "sha256:548417d264b2dbe4f7a494aec469c702d4a3a0e1d6e763b4c30845b52c215839",
       "ownership": "template"
     },
     "hooks/read-size-gate.sh": {
@@ -163,10 +163,17 @@
       "ownership": "template"
     },
     "hooks/run-gate.sh": {
-      "hash": "sha256:ccfb8ae0ef5b757044482f9962c35f3eb769e6efacf7f124758c3e4c0b384d3d",
+      "hash": "sha256:f0f0e1cca36162aeaa9aca9f2b0742537b965413b3c40ff15fb27263b7733543",
       "ownership": "template"
     }
   },
   "instructions_file": ".claude/project-instructions.md",
-  "agent_grants": ".claude/agent-grants.json"
+  "agent_grants": ".claude/agent-grants.json",
+  "pending_once_notes": [
+    {
+      "file": "PROJECT_CONTEXT.md",
+      "from_commit": "3a901fe397b656f28bd8611bb6deca0f35678aa4",
+      "to_commit": "b8608a80258175f3c4faaa9db983876ef024081f"
+    }
+  ]
 }

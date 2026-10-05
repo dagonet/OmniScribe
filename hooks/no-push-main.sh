@@ -53,7 +53,10 @@ fi
 # token" fast exit before the walk that would have caught it ever runs. See
 # gc_script_body / gc_augmented_cmd in hooks/lib/git-cmd.sh for the 16 KB cap
 # and the depth-1/TOCTOU residuals.
-GC_CMD="$(gc_augmented_cmd "$GC_CWD")"
+# v4.3.1 S-3c: gc_dir_rule is the simple-cd rule (lib): it widens GC_CMD as above
+# and refuses a gated command that changes directory in any way but one leading
+# `cd <absolute dir> &&`. GC_CWD_E is the directory everything is judged in.
+gc_dir_rule no-push-main "$GC_CWD" || exit 2
 
 # v3.0.3 item 25 — exit before doing any work on a payload that cannot be gated.
 # See the long note on the same block in hooks/gate-before-merge.sh: the cost is
@@ -63,12 +66,13 @@ GC_CMD="$(gc_augmented_cmd "$GC_CWD")"
 # raw payload because a JSON-escaped newline puts an alnum immediately before
 # `git`, which makes a raw-payload grep produce a FALSE NEGATIVE — an ungated
 # exit 0 — on a newline-separated command.
-if ! printf '%s\n' "$GC_CMD" | grep -qE '(^|[^[:alnum:]_-])git([[:space:]]|$)' &&
+# v4.3.1 G2: GC_GIT_WORD_RE (hooks/lib/git-cmd.sh) also opens the walk for git.exe, GIT and a quoted "git".
+if ! printf '%s\n' "$GC_CMD" | gc_git_prefilter_text | grep -qE "$GC_GIT_WORD_RE" &&
    ! printf '%s\n' "$GC_CMD" | grep -qE '(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+merge'; then
   exit 0
 fi
 
-base="$GC_CWD"
+base="$GC_CWD_E"
 segments=$(gc_segments)
 
 # np_strip_redir <args> -- <args> with shell REDIRECTION tokens removed.
@@ -111,13 +115,6 @@ moved=0
 
 while IFS= read -r seg; do
   [ -n "$seg" ] || continue
-
-  # Track `cd <dir>` so a later bare `git push` is resolved in the right repo.
-  cdt=$(gc_cd_target "$seg")
-  if [ -n "$cdt" ]; then
-    base=$(gc_resolve "$base" "$cdt")
-    continue
-  fi
 
   # A clause that can move HEAD to another branch. `--` means "everything after
   # is a path", so `git checkout -- file` restores files without moving HEAD and

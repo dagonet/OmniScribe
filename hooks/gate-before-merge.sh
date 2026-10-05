@@ -122,6 +122,7 @@
 #      `git rev-parse --verify HEAD^{commit}` ONLY, never from command text,
 #      and validated against `^[0-9a-f]{7,40}$` before it is used to build a
 #      path);
+#   1b. the exact filename last-pass.tree-<HEAD^{tree}>.json (v4.3.1 G4);
 #   2. a scan of `last-pass.*.json` in that directory, newest mtime first,
 #      skipping `*.tmp` (an in-progress atomic write), for one whose "tree"
 #      matches — this is a PINNED decision (R20): it deliberately blesses a
@@ -420,7 +421,7 @@ a6_pull_catchup() {
 #           `git checkout|switch <target>`. `cd` is NOT inert — declaring it so
 #           would switch OFF working machinery: `cd <protected repo> &&
 #           git merge feature/x` from an unprotected cwd is 2 today, via
-#           gc_cd_target/gc_resolve, and would flip to 0.
+#           the leading-cd base (gc_dir_rule, S-3c), and would flip to 0.
 #   mover   everything else. The arms still run on it; if none fires, it sets
 #           the `mutated` flag the pull/push arms read. This is what keeps the
 #           gated clause itself — which is a `mover` by classification — from
@@ -705,7 +706,10 @@ esac
 # (empty GC_CMD there).
 # v4.1.2: the continuation join runs once at the origin (gc_read) and on each
 # appended body, so this text is already joined.
-GC_CMD="$(gc_augmented_cmd "$CWD")"
+# v4.3.1 S-3c: gc_dir_rule is the simple-cd rule (lib): it widens GC_CMD as above
+# and refuses a gated command that changes directory in any way but one leading
+# `cd <absolute dir> &&`. GC_CWD_E is the directory everything is judged in.
+gc_dir_rule gate-before-merge "$CWD" || exit 2
 
 # v3.0.3 item 25 — EXIT BEFORE DOING ANY WORK ON A PAYLOAD THAT CANNOT BE GATED.
 #
@@ -738,7 +742,8 @@ GC_CMD="$(gc_augmented_cmd "$CWD")"
 # that pattern-matched on the subcommand would pass every timing test and
 # re-open finding 62 in the same change — fast and wrong.
 if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
-  if ! printf '%s\n' "$GC_CMD" | grep -qE '(^|[^[:alnum:]_-])git([[:space:]]|$)' &&
+  # v4.3.1 G2: GC_GIT_WORD_RE (hooks/lib/git-cmd.sh) also opens the walk for git.exe, GIT and a quoted "git".
+  if ! printf '%s\n' "$GC_CMD" | gc_git_prefilter_text | grep -qE "$GC_GIT_WORD_RE" &&
      ! printf '%s\n' "$GC_CMD" | grep -qE '(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+merge'; then
     exit 0
   fi
@@ -796,7 +801,7 @@ A6_CONSUMER_LIST='merge:any-target pull:bare pull:named-refspec push:any'
 
 if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
   is_merge=0
-  base="$CWD"
+  base="$GC_CWD_E"
   segments=$(gc_segments)
 
   # v3.0.1 (consumer report) — THE PREMISE THIS GATE READS IS ONE THE COMMAND
@@ -867,12 +872,6 @@ if [ "$GC_TOOL" = "Bash" ] || [ "$GC_TOOL" = "PowerShell" ]; then
     a6cls=$A6_CLASS
     A6_SEG_WHY=$A6_CLASS_WHY
     [ "$a6cls" = inert ] && continue
-
-    cdt=$(gc_cd_target "$seg")
-    if [ -n "$cdt" ]; then
-      base=$(gc_resolve "$base" "$cdt")
-      continue
-    fi
 
     if a6_branch_move "$seg"; then
       # Last one wins: a later checkout back onto a feature branch means the
@@ -1352,6 +1351,16 @@ if [ -n "$GATE_DIR" ] && [ -n "$HEAD_SHA_PATH" ] && [ -f "$GATE_DIR/last-pass.$H
   ARTIFACT="$GATE_DIR/last-pass.$HEAD_SHA_PATH.json"
 fi
 
+# 1b. v4.3.1 G4 -- exact filename for HEAD's TREE: a gate that ran before the
+#     commit existed names its artifact last-pass.tree-<tree>.json. The tree
+#     came only from `git rev-parse HEAD^{tree}` above; its shape is validated
+#     before it builds a path. Freshness and the sha-or-tree match below apply
+#     unchanged.
+if [ -z "$ARTIFACT" ] && [ -n "$GATE_DIR" ] && printf '%s' "$HEAD_TREE" | grep -qE '^[0-9a-f]{40,64}$' \
+   && [ -f "$GATE_DIR/last-pass.tree-$HEAD_TREE.json" ]; then
+  ARTIFACT="$GATE_DIR/last-pass.tree-$HEAD_TREE.json"
+fi
+
 # 2. Tree scan, newest mtime first, skipping `*.tmp` (an in-progress atomic
 #    write from hooks/run-gate.sh — never a finished artifact). SAME TREE,
 #    DIFFERENT SHA is a pinned decision (R20, v4.0.1): this deliberately
@@ -1381,7 +1390,7 @@ if [ -z "$ARTIFACT" ] && [ -f "$REPO_TOP/.gate/last-pass.json" ]; then
 fi
 
 if [ -z "$ARTIFACT" ]; then
-  echo "BLOCKED: No gate artifact found. Run 'bash hooks/run-gate.sh' on the PR branch head (green gate writes <common git dir>/gate/last-pass.<sha>.json), then merge." >&2
+  echo "BLOCKED: No gate artifact found. Run 'bash hooks/run-gate.sh' on the PR branch head (green gate writes <common git dir>/gate/last-pass.<sha>.json, or last-pass.tree-<tree>.json when run before the commit), then merge." >&2
   exit 2
 fi
 
