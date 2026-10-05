@@ -108,9 +108,9 @@ json_probe_ok() {
 # Cheap while the probe was a `command -v` builtin; not cheap now that it execs
 # an interpreter. So the callers below call THIS in their own shell and read
 # $JSON_PARSER, and `json_parser` stays as the printing wrapper for the few
-# places that want the name. gc_read_stdin's json_have call runs in the hook's
-# top-level shell, so the later `$(json_get …)` subshells inherit the resolved
-# value and the whole gate costs one probe.
+# places that want the name. The git gates no longer come through here: since
+# v4.3.1 S6b gc_read_stdin calls json_payload, whose one interpreter run is the
+# probe (canary), the validity check and the field read.
 json_parser_init() {
   [ -n "$JSON_PARSER" ] && return 0
   JSON_PARSER=none
@@ -172,6 +172,136 @@ json_get() {
   case "$1" in "$JSON_BOM"*) set -- "${1#"$JSON_BOM"}" "$2" ;; esac
   json_parser_init
   json_read "$JSON_PARSER" "$1" "$2"
+}
+
+# json_read_payload <backend> <json> -- v4.3.1 S6b: ONE interpreter run that is
+# the parser probe, the validity check and the three field reads the git gates
+# need. Prints NUL-terminated fields: a canary (the program parses $JSON_PROBE,
+# passed as ARGV so stdin stays the payload, and reads jp.k through the SAME walk
+# it uses below -- must be `ok`), a verdict (V = stdin parses, I = it does not;
+# nothing follows an I), then tool_name, cwd, tool_input.command. Each value is
+# converted exactly as json_read converts it, and NUL bytes are removed from it
+# (a `$(...)` read dropped them; one must not shift the fields). Output is one
+# write at the end, with no exit call after it, so a pipe never truncates it.
+# jq accepts only ONE document that is not null/false (`jq -e .` refused those).
+json_read_payload() {
+  case "$1" in
+    node)
+      printf '%s' "$2" | node -e '
+        function rd(v, path) {
+          var p = path.split(".");
+          for (var i = 0; i < p.length; i++) {
+            if (v === null || typeof v !== "object") return "";
+            v = v[p[i]];
+          }
+          if (v === undefined || v === null || typeof v === "object") return "";
+          return String(v).replace(/\u0000/g, "");
+        }
+        var o = "";
+        try { o += rd(JSON.parse(process.argv[1]), "jp.k"); } catch (e) {}
+        o += "\u0000";
+        var v, s, ok = true;
+        try { s = require("fs").readFileSync(0, "utf8"); } catch (e) { process.exit(0); }
+        try { v = JSON.parse(s); } catch (e) { ok = false; }
+        if (!ok) o += "I\u0000";
+        else {
+          o += "V\u0000";
+          var f = ["tool_name", "cwd", "tool_input.command"];
+          for (var j = 0; j < f.length; j++) o += rd(v, f[j]) + "\u0000";
+        }
+        process.stdout.write(o);
+      ' "$JSON_PROBE" 2>/dev/null
+      ;;
+    python3)
+      printf '%s' "$2" | python3 -c '
+import json, sys
+def rd(v, path):
+    for k in path.split("."):
+        if not isinstance(v, dict):
+            return b""
+        v = v.get(k)
+    if v is None or isinstance(v, (dict, list)):
+        return b""
+    try:
+        return (v if isinstance(v, str) else json.dumps(v)).replace("\x00", "").encode("utf-8")
+    except UnicodeEncodeError:
+        return b""
+o = b""
+try:
+    o += rd(json.loads(sys.argv[1]), "jp.k")
+except Exception:
+    pass
+o += b"\x00"
+try:
+    s = sys.stdin.buffer.read().decode("utf-8-sig", "replace")
+except Exception:
+    sys.exit(0)
+try:
+    v = json.loads(s)
+except Exception:
+    o += b"I\x00"
+else:
+    o += b"V\x00"
+    for f in ("tool_name", "cwd", "tool_input.command"):
+        o += rd(v, f) + b"\x00"
+sys.stdout.buffer.write(o)
+' "$JSON_PROBE" 2>/dev/null
+      ;;
+    jq)
+      printf '%s' "$2" | jq -n -j --arg probe "$JSON_PROBE" '
+        def rd($p): try (getpath($p | split("."))
+          | if . == null or type == "object" or type == "array" then ""
+            elif type == "string" then split("\u0000") | join("")
+            else tojson end) catch "";
+        (try ($probe | fromjson | rd("jp.k")) catch "") as $c
+        | (try [inputs] catch null) as $d
+        | $c, "\u0000",
+          (if $d != null and ($d | length) == 1 and $d[0] != null and $d[0] != false
+           then "V\u0000", ($d[0] | rd("tool_name"), "\u0000", rd("cwd"), "\u0000", rd("tool_input.command"), "\u0000")
+           else "I\u0000" end)
+      ' 2>/dev/null
+      ;;
+    *) printf '' ;;
+  esac
+}
+
+# json_payload <json> -- v4.3.1 S6b: gc_read_stdin's whole parse, one interpreter
+# spawn instead of five. Sets JP_TOOL / JP_CWD / JP_CMD (cleared first). Returns
+# 0 valid, 1 invalid (empty included), 2 no working parser. A backend whose
+# canary is not `ok` (a stub, a broken install) is skipped like a failed probe,
+# in the same node -> python3 -> jq order, and the winner is memoised in
+# JSON_PARSER for any later json_get.
+json_payload() {
+  local _jp_b _jp_c _jp_v _jp_ok
+  JP_TOOL=""; JP_CWD=""; JP_CMD=""
+  case "$1" in "$JSON_BOM"*) set -- "${1#"$JSON_BOM"}" ;; esac
+  if [ -z "$1" ]; then
+    json_parser_init
+    [ "$JSON_PARSER" = none ] && return 2
+    return 1
+  fi
+  for _jp_b in ${JSON_PARSER:-node python3 jq}; do
+    [ "$_jp_b" = none ] && return 2
+    command -v "$_jp_b" >/dev/null 2>&1 || continue
+    # every read must find its NUL: a short record is a failed canary
+    _jp_ok=1
+    { IFS= read -r -d '' _jp_c && IFS= read -r -d '' _jp_v || _jp_ok=0
+      if [ "$_jp_ok" = 1 ] && [ "$_jp_v" = V ]; then
+        IFS= read -r -d '' JP_TOOL && IFS= read -r -d '' JP_CWD && IFS= read -r -d '' JP_CMD || _jp_ok=0
+      fi
+    } < <(json_read_payload "$_jp_b" "$1")
+    if [ "$_jp_ok" != 1 ] || [ "$_jp_c" != ok ]; then JP_TOOL=""; JP_CWD=""; JP_CMD=""; continue; fi
+    JSON_PARSER=$_jp_b
+    if [ "$_jp_v" != V ]; then JP_TOOL=""; JP_CWD=""; JP_CMD=""; return 1; fi
+    # the old `$(json_get ...)` stripped every trailing newline; so does this
+    # (case + ${x%?} is linear; a `[ "${x%$'\n'}" != "$x" ]` loop is not)
+    while :; do case "$JP_TOOL" in *$'\n') JP_TOOL=${JP_TOOL%?} ;; *) break ;; esac; done
+    while :; do case "$JP_CWD" in *$'\n') JP_CWD=${JP_CWD%?} ;; *) break ;; esac; done
+    while :; do case "$JP_CMD" in *$'\n') JP_CMD=${JP_CMD%?} ;; *) break ;; esac; done
+    return 0
+  done
+  JSON_PARSER=none
+  return 2
 }
 
 # json_session <json> -- the payload's session_id, by grep. Deliberately NOT

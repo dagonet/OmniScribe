@@ -43,7 +43,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/pre-commit-test.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/pre-commit-test.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c"
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/hooks/pre-commit-test.sh\"; c=$?; if [ \"$c\" = \"127\" ]; then echo 'HOOK SCRIPT MISSING: ${CLAUDE_PROJECT_DIR:-.}/hooks/pre-commit-test.sh -- enforcement offline. Check that hooks/ exists at the project root.' >&2; exit 2; fi; exit $c",
+            "timeout": 3360
           },
           {
             "type": "command",
