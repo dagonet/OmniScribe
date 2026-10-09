@@ -37,6 +37,18 @@ KEEP=4000
 
 TOOL_INPUT=$(cat)
 
+# v4.4.0 C4: the engine below prints only when tool_response.stdout or
+# tool_response.stderr (the two fields it measures, both inside the payload) is
+# longer than THRESHOLD UTF-16 units; any other path is silent. Each unit costs at
+# least one byte of the JSON text (BMP: 1-3 bytes, or 2-6 escaped; astral: 4 bytes
+# or 12 escaped for 2 units), so a payload of <= THRESHOLD bytes cannot hold such an
+# output. Side effect: a small payload no longer reaches the once-per-TMPDIR no-node
+# WARN below; the decision (no output, exit 0) is the same.
+_bog_set=${LC_ALL+x}; _bog_lc=${LC_ALL-}
+LC_ALL=C; _bog_n=${#TOOL_INPUT}
+if [ -n "$_bog_set" ]; then LC_ALL=$_bog_lc; else unset LC_ALL; fi
+[ "$_bog_n" -le "$THRESHOLD" ] && exit 0
+
 # v2.2.0: the spill/truncate engine below is an embedded node program, so this
 # hook needs node specifically. Without it it stays fail-open, but says so once.
 jlib="$(dirname "$0")/lib/json.sh"

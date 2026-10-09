@@ -9,12 +9,23 @@ lib="$(dirname "$0")/lib/json.sh"
 # shellcheck source=lib/json.sh
 . "$lib"
 DH_JSON=$(cat)
-json_have || exit 0
-json_valid "$DH_JSON" || exit 0
-DH_CWD=$(json_get "$DH_JSON" cwd)
+json_fields "$DH_JSON" cwd tool_input.command; DH_RC=$?   # v4.4.0 C3: one parser run
+[ "$DH_RC" = 2 ] && exit 0
+if [ "$DH_RC" = 0 ]; then DH_CWD=${JF[0]}; DH_CMD=${JF[1]}
+else
+  # invalid payloads never come from Claude Code; the fallback only preserves the old jq multi-document verdict
+  json_valid "$DH_JSON" || exit 0
+  DH_CWD=$(json_get "$DH_JSON" cwd); DH_CMD=$(json_get "$DH_JSON" tool_input.command)
+fi
 [ -n "$DH_CWD" ] && [ -f "$DH_CWD/.claude/git-guard-off" ] && exit 0
-DH_CMD=$(json_get "$DH_JSON" tool_input.command)
 [ -n "$DH_CMD" ] || exit 0
+# v4.4.0 C4: every refusal needs `<<` (shape 1), `sleep` (shape 2) or a leading `cd`
+# (shape 3) in the command after continuation joining; a backslash may hide one across a
+# continuation, so it continues too. Over-matches on purpose (any case, any position).
+# Applies to both parse paths above (DH_CMD is set once, either way).
+shopt -s nocasematch
+case "$DH_CMD" in *'\'*|*'<<'*|*sleep*|*cd*) ;; *) shopt -u nocasematch; exit 0 ;; esac
+shopt -u nocasematch
 _j=$(printf '%s' "$DH_CMD" | cmd_join_continuations) && [ -n "$_j" ] && DH_CMD="$_j"
 dh_refuse() { echo "BLOCKED: deny-hang-shapes: $1" >&2; exit 2; }
 

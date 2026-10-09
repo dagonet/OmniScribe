@@ -31,6 +31,8 @@
 #     message names the whole command, so do not read a failure as "everything
 #     after the first project was fine"; nothing after it was executed at all.
 
+trap '[ "$?" = 127 ] && exit 2' EXIT   # v4.4.0 C2: the old registration wrapper's 127->2, now in-hook (exec/source forms cannot wrap)
+
 # v4.3.1 T1-5: bash imports SECONDS from the environment; reset it so the hook-wide ceiling counts from THIS hook's start.
 SECONDS=0
 
@@ -66,7 +68,9 @@ RUN_GATE="$(cd "$(dirname "$0")" && pwd)/run-gate.sh"
 # IT IS A DIAGNOSTIC AND NEVER A GATE. Every failure below is swallowed —
 # unwritable cwd, no git repo, a read-only gate directory, a git older than
 # 2.31 (gc_gate_dir's own fallback WARN is swallowed here too — a diagnostic
-# path must never grow new stderr of its own, v4.0.1 addendum). A diagnostic
+# path must never grow new stderr of its own, v4.0.1 addendum; the one
+# exception: the index `cp` error below is deliberately visible since v4.4.0,
+# to diagnose the empty-tree case). A diagnostic
 # that can block a commit is a second gate nobody declared, and it would be
 # the worst kind: one whose refusal has nothing to do with the tests.
 #
@@ -87,7 +91,18 @@ RUN_GATE="$(cd "$(dirname "$0")" && pwd)/run-gate.sh"
 # `last-precommit-noop.<tree>.json`, `<tree>` replaced with the literal
 # `unknown` when no tree was hashed (unreadable, empty-cmd, global-refused,
 # unresolved-c — every path before pct_capture_tree can run).
-PCT_HOOK_T0=$(date +%s 2>/dev/null || echo 0)
+# v4.3.2 F2 -- the clock without a fork where bash can: printf %(...)T is a
+# builtin from bash 4.2 (Git Bash, Linux); older bash (macOS /bin/bash 3.2)
+# keeps `date`. A caller wanting UTC prefixes the call with TZ=UTC0.
+pct_now() { # <var> <strftime format>
+  if [ "${BASH_VERSINFO[0]:-0}" -gt 4 ] || { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && [ "${BASH_VERSINFO[1]:-0}" -ge 2 ]; }; then
+    printf -v "$1" "%($2)T" -1
+  else
+    printf -v "$1" '%s' "$(date "+$2" 2>/dev/null)"
+  fi
+}
+pct_now PCT_HOOK_T0 '%s'
+[ -n "$PCT_HOOK_T0" ] || PCT_HOOK_T0=0
 PCT_ARTIFACT_BASE=""
 PCT_TREE=""
 # v4.3.0 fix round 1, S-8 (I1) -- true when pct_capture_tree's own index copy
@@ -138,7 +153,7 @@ pct_capture_tree() {
   # 8; matches hooks/run-gate.sh's own identical fix).
   _pt_idx=$(git -C "$_pt_top" rev-parse --path-format=absolute --git-path index 2>/dev/null)
   _pt_copied=false
-  if [ -n "$_pt_idx" ] && cp -p "$_pt_idx" "$_pt_d/index" 2>/dev/null; then
+  if [ -n "$_pt_idx" ] && cp -p "$_pt_idx" "$_pt_d/index"; then
     _pt_copied=true
   fi
   GIT_INDEX_FILE="$_pt_d/index" git -C "$_pt_top" add -u -- . >/dev/null 2>&1
@@ -152,7 +167,47 @@ pct_capture_tree() {
   rm -rf "$_pt_d"
   return 0
 }
+# v4.3.2 F2 -- THE NO-OP RECORD, CHEAPLY. Same file, same keys, same meaning
+# as before; pct_note delegates here for no-commit-segment. Three programs on
+# the fast path instead of ~12: ONE git call for top-level and common dir
+# (pct_note's own rev-parse plus gc_gate_dir's two made three), the builtin
+# clock and byte count instead of date/wc/tr, mkdir only when missing, and no
+# prune -- this file is always last-precommit-noop.unknown.json (PCT_TREE is
+# set only once a commit segment is found), so it never accumulates, and the
+# commit paths' pct_prune still removes no-op files older versions left. The
+# one-call answer is used only when it is two absolute lines (plan R-6); any
+# other answer (git < 2.31, no repository) takes gc_gate_dir as before. Still
+# a diagnostic: every failure returns 0 and nothing reaches stderr.
+pct_note_noop() { # <rc>
+  local LC_ALL=C _pn_base _pn_rp _pn_cd _pn_gd="" _pn_t1 _pn_ts _pn_tool _pn_noop
+  _pn_base="${PCT_ARTIFACT_BASE:-$GC_CWD}"
+  [ -n "$_pn_base" ] || return 0
+  _pn_rp=$(git -C "$_pn_base" rev-parse --path-format=absolute --show-toplevel --git-common-dir 2>/dev/null) || _pn_rp=""
+  _pn_cd=${_pn_rp#*"$GC_NL"}
+  case "$_pn_rp" in
+    /*"$GC_NL"/*|[A-Za-z]:*"$GC_NL"[A-Za-z]:*)
+      case "$_pn_cd" in *"$GC_NL"*) ;; *) _pn_gd="$_pn_cd/gate" ;; esac ;;
+  esac
+  [ -n "$_pn_gd" ] || _pn_gd=$(gc_gate_dir "$_pn_base" 2>/dev/null)
+  [ -n "$_pn_gd" ] || return 0
+  [ -d "$_pn_gd" ] || mkdir -p "$_pn_gd" 2>/dev/null || return 0
+  pct_now _pn_t1 '%s'
+  TZ=UTC0 pct_now _pn_ts '%Y-%m-%dT%H:%M:%SZ'
+  case "${GC_TOOL:-}" in
+    Bash)       _pn_tool=Bash ;;
+    PowerShell) _pn_tool=PowerShell ;;
+    *)          _pn_tool=other ;;
+  esac
+  _pn_noop="$_pn_gd/last-precommit-noop.${PCT_TREE:-unknown}.json"
+  # cmd_len: ${#} under LC_ALL=C is BYTES (the v4.1.2 contract wc -c kept).
+  printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","kind":"no-commit-segment","gate_dir":"%s"}\n' \
+    no-commit-segment "$1" "$PCT_TREE" "$(( ${_pn_t1:-0} - PCT_HOOK_T0 ))" "${#GC_CMD}" "$_pn_tool" "$_pn_ts" "$_pn_gd" \
+    > "$_pn_noop.tmp" 2>/dev/null && mv -f "$_pn_noop.tmp" "$_pn_noop" 2>/dev/null
+  return 0
+}
 pct_note() { # <path-label> <rc, or -1 where no subshell ran>
+  # v4.3.2 F2: the no-op record has its own cheap writer (pct_note_noop).
+  if [ "$1" = no-commit-segment ]; then pct_note_noop "$2"; return 0; fi
   _pn_base="${PCT_ARTIFACT_BASE:-$GC_CWD}"
   [ -n "$_pn_base" ] || return 0
   # "At the repo top" has a precondition. Outside a repo there is no top to
@@ -194,21 +249,7 @@ pct_note() { # <path-label> <rc, or -1 where no subshell ran>
   # left untouched on that path. Every other path (including empty-cmd and
   # unreadable, which also found no commit but for a different reason) keeps
   # writing last-precommit.json exactly as before, now carrying
-  # matched_in_quoted as well.
-  if [ "$1" = no-commit-segment ]; then
-    _pn_noop="$_pn_gd/last-precommit-noop.$_pn_treeseg.json"
-    # v4.1.2: cmd_len is BYTES, locale-independent -- ${#GC_CMD} counted
-    # characters under a UTF-8 locale and bytes under C, so the skill's recipe
-    # (which counts bytes via the hook's own pipeline) disagreed with the
-    # record on any non-ASCII code line whenever the harness carried a UTF-8
-    # locale. A diagnostic field; bytes is the well-defined ruler.
-    printf '{"path":"%s","rc":%s,"tree":"%s","elapsed_s":%s,"cmd_len":%s,"tool":"%s","ts":"%s","kind":"no-commit-segment","gate_dir":"%s"}\n' \
-      "$1" "$2" "$PCT_TREE" "$((_pn_t1 - PCT_HOOK_T0))" "$(printf '%s' "$GC_CMD" | wc -c | tr -d ' ')" "$_pn_tool" \
-      "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$_pn_gd" \
-      > "$_pn_noop.tmp" 2>/dev/null && mv -f "$_pn_noop.tmp" "$_pn_noop" 2>/dev/null || return 0
-    pct_prune "$_pn_gd"
-    return 0
-  fi
+  # matched_in_quoted as well. (v4.3.2: written by pct_note_noop.)
   # The COMMAND ITSELF is never recorded, only its length: this file lands in
   # the consumer's repo, and a diagnostic is not a place to accumulate command
   # history. printf, so no jq is required on the path that reports jq missing.
@@ -482,24 +523,50 @@ fi
 # v4.3.1 S6 -- EXACT FAST PATH for a command that cannot reach a commit. This
 # hook runs on EVERY Bash call; the walk below cost ~1.4 s on an idle machine
 # for `ls -la`. Everything past this point can only refuse a command whose text
-# (quotes and backslashes removed, case ignored) holds one of these words:
-#   commit            the gated verb itself (`git com"mit"`, `git com\mit`, `GIT COMMIT`);
+# (quotes and backslashes removed, case ignored; v4.3.2 6b: the verb matchers
+# remove a backslash too, so `git com\mit` is gated and walks) holds one of
+# these words:
+#   commit            the gated verb itself (`git com"mit"`, `GIT COMMIT`);
 #   merge pull push   gc_dir_rule (simple-cd rule) refuses these, and `gh pr merge`,
 #                     after a directory change even with no `commit` in the text;
-#   sh                bash/sh/pwsh/powershell -- the words that make the walk read
+#   sh                the WORD sh or sh.exe (/bin/sh, C:\Git\bin\sh.exe; never x.sh or --short), and the substrings
+#                     bash, pwsh, powershell -- the words that make the walk read
 #                     a script body (gc_script_body, gc_seg_is_ps);
-#   source, `.`       `source x` and the dot-source `. x` (a `.` followed by
-#                     whitespace or end of text -- broader than a segment-head
-#                     test on purpose: a superset is simpler and fail-closed).
+#   source, `.`       `source` (substring), and a `.` token: lone or ending in `/.`
+#                     (`. x`, `ls;. x`, `x/. c.sh`; never `./x` or a prose dot);
+#   [ ? *             a glob character: the walk expands globs, so the word match
+#                     cannot judge the text for certain.
 # With none of them nothing below can refuse, so the walk is skipped and the same
 # no-op record is written. Zero forks: pure parameter expansion and case. Any
 # doubt keeps the walk -- this only ever skips work.
 pct_t=${GC_CMD//\"/}; pct_t=${pct_t//\'/}; pct_t=${pct_t//\\/}
+# v4.3.2 F1 -- `sh` and `.` are matched as WORDS: as substrings they fired on
+# --short, publish, stylish, every x.sh name, and every sentence of prose. A
+# word: the text with each character outside [[:alnum:]._] made a space, so
+# `/bin/sh` fires and `x.sh`/`--short` do not; a lone dot: the text with
+# whitespace and ; & | ( ) { } ! ` < > made spaces, so `. x`, `ls;. x` and a token
+# ending in `/.` (`x/. c.sh`: the walk takes its basename as a dot-source) fire and
+# `./x`, `..` and `end.` do not. bash, pwsh and powershell are named
+# explicitly (*sh* used to cover them); the verb stems stay substrings. A glob
+# character ([ ? *) always walks: the walk expands globs (`set -- $seg` in
+# gc_script_body), so `/bin/[s]h c.sh` or `/bin/?h c.sh` runs a script the word
+# match cannot see.
+# Superset proof: design F1 (words and lone dots), plus the glob rule. The walk's
+# only expansions of the text are IFS splitting (narrower than the word
+# separators) and pathname expansion (needs [ ? *), in gc_script_body and
+# gc_seg_is_ps; so a text with none of those characters is judged exactly by the
+# word match. The bracket patterns live in variables: a literal `}` inside
+# ${...} would end the expansion.
+pct_nw='[^[:alnum:]._]'; pct_sep='[[:space:];&|(){}!`<>]'
+pct_u=${GC_CMD//\"/}; pct_u=${pct_u//\'/}   # quotes out, backslashes kept: C:\Git\bin\sh.exe
+pct_w=" ${pct_t//$pct_nw/ } "; pct_w2=" ${pct_u//$pct_nw/ } "; pct_d=" ${pct_t//$pct_sep/ } "
+pct_walk=0
 shopt -s nocasematch
-case "$pct_t" in
-  *commit*|*merge*|*pull*|*push*|*sh*|*source*|*.[[:space:]]*|*.) shopt -u nocasematch ;;
-  *) shopt -u nocasematch; pct_note no-commit-segment -1; exit 0 ;;
-esac
+case "$pct_t" in *commit*|*merge*|*pull*|*push*|*source*|*bash*|*pwsh*|*powershell*|*[[?*]*) pct_walk=1 ;; esac
+case "$pct_w$pct_w2" in *" sh "*|*" sh.exe "*) pct_walk=1 ;; esac
+case "$pct_d" in *" . "*|*"/. "*) pct_walk=1 ;; esac
+shopt -u nocasematch
+[ "$pct_walk" = 1 ] || { pct_note no-commit-segment -1; exit 0; }
 
 # v4.0.3 item 12 -- widen GC_CMD to include the body of any script segment it
 # invokes (`bash|sh|source|. <path>`, depth 1) BEFORE splitting into segments,
