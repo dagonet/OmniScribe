@@ -3,7 +3,7 @@
 # has no model of its own (general-purpose, Plan, Explore, `model: inherit`)
 # runs on the project default instead of the orchestrator's model (v4.3.0, spec
 # Part C). Never touches an explicit model or a typed agent's own model. Steps
-# aside while Jev routing is on (it applies the same floor) and while the user
+# aside while the Jev router will run in this checkout (it applies the same floor; see am_jev_routing in lib/agent-model.sh) and while the user
 # has set CLAUDE_CODE_SUBAGENT_MODEL to a real model (S-30; see the step-aside
 # below for exactly what that covers). ADVISORY: any doubt -> exit 0, no output (the spawn
 # inherits, as before v4.3.0).
@@ -20,74 +20,39 @@
 # tree, falling back to the filename. With NO file, only the known inheriting
 # built-ins are floored; any other unknown type may come from --agents, managed
 # settings or a plugin that this hook cannot see, so it does nothing.
+#
+# v4.4.0: the resolution (agent identity, the env step-aside, the built-in list,
+# the project default) lives in lib/agent-model.sh, shared with the optional Jev
+# router so both answer the same question the same way. With Jev off this hook
+# is byte-for-byte the base release in behaviour: scripts/test-hooks.sh J-DIFF.
 lib="$(dirname "$0")/lib/json.sh"
 [ -f "$lib" ] || exit 0
 # shellcheck source=lib/json.sh
 . "$lib"
+amlib="$(dirname "$0")/lib/agent-model.sh"
+[ -f "$amlib" ] || exit 0
+# shellcheck source=lib/agent-model.sh
+. "$amlib"
 MF_JSON=$(cat)
-# S-23/S-30: CLAUDE_CODE_SUBAGENT_MODEL is a native default only when it holds a
-# REAL model (an alias or a full claude-* id); `inherit` or empty means unset.
-# With CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 it covers every spawn, so step aside
-# here. Without FORCE it covers only general-purpose and an untyped spawn
-# (checked once the type is known, below): it does not reach Plan, Explore,
-# `claude` or an agent whose own model is `inherit`, and those keep the floor.
-MF_ENV_REAL=""
-case "${CLAUDE_CODE_SUBAGENT_MODEL:-}" in haiku|sonnet|opus|fable|claude-*) MF_ENV_REAL=1 ;; esac
-[ -n "$MF_ENV_REAL" ] && [ "${CLAUDE_CODE_SUBAGENT_MODEL_FORCE:-}" = 1 ] && exit 0
+am_env_forced && exit 0
 case "$MF_JSON" in "$JSON_BOM"*) MF_JSON=${MF_JSON#"$JSON_BOM"} ;; esac
-json_have || exit 0
-json_valid "$MF_JSON" || exit 0
-[ "$(json_get "$MF_JSON" tool_name)" = "Agent" ] || exit 0
-[ -n "$(json_get "$MF_JSON" tool_input.model)" ] && exit 0
-MF_TYPE=$(json_get "$MF_JSON" tool_input.subagent_type)
-[ -n "$MF_TYPE" ] || MF_TYPE=general-purpose
-[ -n "$MF_ENV_REAL" ] && [ "$MF_TYPE" = general-purpose ] && exit 0
-case "$MF_TYPE" in *[!A-Za-z0-9_.-]*|.*) exit 0 ;; esac
-# Types that carry a model of their own (statusline-setup: sonnet,
-# claude-code-guide: haiku) or ignore a model override (fork): step aside.
-case "$MF_TYPE" in statusline-setup|claude-code-guide|fork) exit 0 ;; esac
-MF_CWD=$(json_get "$MF_JSON" cwd); [ -n "$MF_CWD" ] || MF_CWD=.
-MF_ROOT=$(git -C "$MF_CWD" rev-parse --show-toplevel 2>/dev/null) || MF_ROOT="$MF_CWD"
-# GC_KEY_PRE, defined locally (same text as hooks/lib/git-cmd.sh and run-gate.sh;
-# sourcing git-cmd.sh here would cost ~57 ms per Agent spawn): a BOM on line 1
-# must not hide the key. Check 21c-2 requires every PROJECT_CONTEXT.md anchor to use it.
-GC_BOM=$(printf '\357\273\277')
-GC_KEY_PRE="^(${GC_BOM})?[-*[:space:]]*"
-# mf_fm <file> <key> -- a frontmatter value, unquoted, no whitespace, CR and a
-# leading BOM tolerated. Empty when the key (or the frontmatter) is absent.
-mf_fm() { awk -v k="$2" -v bom="$GC_BOM" 'NR==1&&index($0,bom)==1{$0=substr($0,length(bom)+1)} NR==1&&/^---/{f=1;next} f&&/^---/{exit} f&&index($0,k":")==1{sub(/^[^:]*:[[:space:]]*/,"");print;exit}' "$1" 2>/dev/null | tr -d '\r"'"'"'[:space:]'; }
-# mf_find <agents dir> -- the first *.md under it (recursively) whose frontmatter
-# name equals $MF_TYPE. grep narrows the candidates; mf_fm confirms the name is
-# really in the frontmatter (a `name:` line in a body does not count).
-mf_find() {
-  [ -d "$1" ] || return 0
-  grep -rlE "^name:[[:space:]]*[\"']?${MF_TYPE}[\"']?[[:space:]]*\$" --include='*.md' "$1" 2>/dev/null | while IFS= read -r mf_c; do
-    if [ "$(mf_fm "$mf_c" name)" = "$MF_TYPE" ]; then printf '%s\n' "$mf_c"; break; fi
-  done | head -1
-}
-MF_FILE=""
-for mf_d in "$MF_ROOT/.claude/agents" "$HOME/.claude/agents"; do
-  MF_FILE=$(mf_find "$mf_d")
-  [ -n "$MF_FILE" ] && break
-done
-if [ -z "$MF_FILE" ]; then
-  for mf_f in "$MF_ROOT/.claude/agents/$MF_TYPE.md" "$HOME/.claude/agents/$MF_TYPE.md"; do
-    [ -f "$mf_f" ] && { MF_FILE=$mf_f; break; }
-  done
-fi
-if [ -n "$MF_FILE" ]; then
-  # Any model of its own -- an alias or a full id -- is the agent's choice;
-  # only `inherit` (or none) falls through to the floor.
-  case "$(mf_fm "$MF_FILE" model)" in ""|inherit) ;; *) exit 0 ;; esac
+json_fields "$MF_JSON" tool_name tool_input.model tool_input.subagent_type cwd; MF_RC=$?   # v4.4.0 C3: one parser run
+[ "$MF_RC" = 2 ] && exit 0
+if [ "$MF_RC" = 0 ]; then MF_TN=${JF[0]}; MF_MODEL=${JF[1]}; MF_TYPE=${JF[2]}; MF_CWD=${JF[3]}
 else
-  # No file: only the known inheriting built-ins. Anything else may be defined
-  # where this hook cannot look, and when it cannot tell it does nothing.
-  case "$MF_TYPE" in general-purpose|Plan|Explore|claude) ;; *) exit 0 ;; esac
+  # invalid payloads never come from Claude Code; the fallback only preserves the old jq multi-document verdict
+  json_valid "$MF_JSON" || exit 0
+  MF_TN=$(json_get "$MF_JSON" tool_name); MF_MODEL=$(json_get "$MF_JSON" tool_input.model)
+  MF_TYPE=$(json_get "$MF_JSON" tool_input.subagent_type); MF_CWD=$(json_get "$MF_JSON" cwd)
 fi
-MF_GD=$(git -C "$MF_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)
-[ -n "$MF_GD" ] && grep -Eq '"route"[[:space:]]*:[[:space:]]*true' "$MF_GD/jev/config.json" 2>/dev/null && exit 0
-MF_DEF=$(grep -E "${GC_KEY_PRE}\*\*Subagent default model\*\*:" "$MF_ROOT/PROJECT_CONTEXT.md" 2>/dev/null | head -1 | sed -E 's/.*\*\*Subagent default model\*\*:[[:space:]]*//; s/[`[:space:]]//g')
-case "$MF_DEF" in haiku|sonnet|opus|fable) ;; *) MF_DEF=sonnet ;; esac
+[ "$MF_TN" = "Agent" ] || exit 0
+[ -n "$MF_MODEL" ] && exit 0
+[ -n "$MF_TYPE" ] || MF_TYPE=general-purpose
+[ -n "$MF_CWD" ] || MF_CWD=.
+am_resolve "$MF_TYPE" "$MF_CWD"
+[ "$AM_KIND" = floor ] || exit 0
+am_jev_routing "$AM_ROOT" && exit 0
+MF_DEF=$AM_MODEL
 # Emit with the backend json.sh selected. The payload goes in on stdin and the
 # model as an argument -- never interpolated into program text. tool_input is
 # copied whole (updatedInput REPLACES it), so unknown keys survive.

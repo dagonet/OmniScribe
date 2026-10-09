@@ -148,7 +148,11 @@ GC_GATE_PRUNE_S=$(( GC_GATE_TTL_S * 24 ))
 
 # Fail CLOSED when the JSON reader is missing: without it GC_CMD would be empty
 # and every gate would allow every command.
-gc_json_lib="$(dirname "${BASH_SOURCE[0]:-$0}")/json.sh"
+gc_json_lib="${BASH_SOURCE[0]:-$0}"
+case "$gc_json_lib" in
+  */*) gc_json_lib="${gc_json_lib%/*}/json.sh" ;;
+  *) gc_json_lib="./json.sh" ;;
+esac
 if [ ! -f "$gc_json_lib" ]; then
   echo "BLOCKED: $gc_json_lib missing — run /sync-template step 6b (hooks/lib/json.sh)" >&2
   exit 2
@@ -329,14 +333,26 @@ GC_KEY_PRE="^(${GC_BOM})?[-*[:space:]]*"
 # so it is looked for under the process cwd, which is the project directory
 # Claude Code runs hooks in.
 gc_read_stdin() {
-  GC_JSON=$(cat)
   # v4.3.1 S6b: ONE interpreter run parses the payload, returns the three fields
   # and doubles as the validity check and the parser probe (json_payload; it was
   # five spawns: probe, json_valid, three json_get). rc 2 = no working parser,
   # anything else non-zero (1 = does not parse, empty stdin included; 127 =
   # json_payload missing) refuses too; 0 = fields in JP_*.
-  json_payload "$GC_JSON"
-  gc_rc=$?
+  # v4.4.0 C4: no-push-main / gate-before-merge read stdin and parse BEFORE
+  # sourcing this file (their early exit), and hand the result over in
+  # GC_PRE_JSON (payload), GC_PREPARSED (json_payload's rc) and JP_* (fields).
+  # It is assigned HERE, inside the function, because the top-level
+  # `GC_JSON=""` above would wipe it, and gc_cmd_unreadable reads GC_JSON.
+  # Only an explicit `gc_read_stdin --preparsed` (the two gates) takes it over; every
+  # other caller reads stdin and ignores GC_PREPARSED / GC_PRE_JSON in its environment.
+  if [ "${1-}" = --preparsed ]; then
+    GC_JSON=$GC_PRE_JSON
+    gc_rc=$GC_PREPARSED
+  else
+    GC_JSON=$(cat)
+    json_payload "$GC_JSON"
+    gc_rc=$?
+  fi
   if [ "$gc_rc" = 2 ]; then
     GC_CWD=$(pwd)
     GC_TOOL=""
@@ -393,6 +409,57 @@ gc_read_stdin() {
       ;;
   esac
   GC_CMD=$(gc_protect_c_paths "$GC_CMD")
+  # v4.4.0: gc_dollar_quote exits 0 only at a `$` directly followed by ' or ",
+  # so the awk is skipped (builtin case) when the text holds neither.
+  case "$GC_CMD" in
+    *\$\'* | *\$\"*)
+      if printf '%s' "$GC_CMD" | gc_dollar_quote; then
+        gc_guard_off && return 0
+        echo "BLOCKED: the git gates cannot check \$'...' or \$\"...\" quoting -- use plain quotes, and printf for escapes. Or create <cwd>/.claude/git-guard-off to opt out." >&2
+        exit 2
+      fi
+      ;;
+  esac
+}
+
+# gc_dollar_quote -- stdin; 0 when the text holds a real $'...' or $"..." word,
+# 1 otherwise. Quote-aware, POSIX awk: skips '...', "..." (but scans $( ), ${ },
+# backticks as code), backslash escapes and # comments. Design:
+# docs/plans/2026-10-04-ansi-mac-design.md Q1 option C. Residuals: a heredoc body
+# with an odd number of apostrophes can hide a later $'; a case label's ) inside
+# "$(...)" closes the $( early; $$'x' is refused (errs closed); a script body that
+# encodes the git word itself passes the body check; backticks inside "..." close
+# at the next backtick (errs closed).
+gc_dollar_quote() {
+  awk '
+    { b = b $0 "\n" }
+    END {
+      sq = "\047"; dq = "\""; st = "n"; n = length(b)
+      for (i = 1; i <= n; i++) {
+        c = substr(b, i, 1); t = substr(st, length(st), 1)
+        if (t == "s") { if (c == sq) st = substr(st, 1, length(st) - 1); continue }
+        if (t == "d" || t == "r") {
+          if (c == "\\") i++
+          else if (t == "d" && c == dq) st = substr(st, 1, length(st) - 1)
+          else if (t == "r" && c == "}") st = substr(st, 1, length(st) - 1)
+          else if (t == "r" && (c == dq || c == sq)) st = st (c == dq ? "d" : "s")
+          else if (c == "$" && substr(b, i + 1, 1) == "(") { st = st "p"; i++ }
+          else if (c == "$" && substr(b, i + 1, 1) == "{") { st = st "r"; i++ }
+          else if (t == "r" && c == "$" && (substr(b, i + 1, 1) == sq || substr(b, i + 1, 1) == dq)) exit 0
+          else if (c == "`") st = st "b"
+          continue
+        }
+        if (c == "#" && (i == 1 || index(" \t\n;&|()<>", substr(b, i - 1, 1)))) { while (i < n && substr(b, i + 1, 1) != "\n") i++; continue }
+        if (c == "\\") { i++; continue }
+        if (c == "$") { d = substr(b, i + 1, 1); if (d == sq || d == dq) exit 0 }
+        else if (c == sq) st = st "s"
+        else if (c == dq) st = st "d"
+        else if (c == "`") { if (t == "b") st = substr(st, 1, length(st) - 1); else st = st "b" }
+        else if (c == "(" && t == "p") st = st "p"
+        else if (c == ")" && t == "p") st = substr(st, 1, length(st) - 1)
+      }
+      exit 1
+    }'
 }
 
 # gc_cmd_unreadable -- true when this invocation is one the git gates were
@@ -486,10 +553,14 @@ gc_guard_off() {
   [ -f "$GC_CWD/.claude/git-guard-off" ]
 }
 
+# gc_split_ops -- stdin split on | ; && into lines. awk, not sed 's/&&/\n/g':
+# BSD sed writes a literal n for \n in a replacement (design Q2 #1).
+gc_split_ops() { tr '|;' '\n\n' | awk '{gsub(/&&/,"\n")}1'; }
+
 # Splits GC_CMD into segments on && || ; | and newlines, with quote characters
 # removed so quoted wrapper payloads become plain text in the same segment.
 gc_segments() {
-  printf '%s\n' "$GC_CMD" | tr -d "\"'" | tr '|;' '\n\n' | sed 's/&&/\n/g'
+  printf '%s\n' "$GC_CMD" | tr -d "\"'" | gc_split_ops
 }
 
 # gc_seg_quoted -- sibling of gc_segments, additive (no caller of gc_segments
@@ -512,7 +583,7 @@ gc_segments() {
 # function. Callers assign the result to a variable named GC_SEG_QUOTED
 # themselves, e.g. `GC_SEG_QUOTED=$(gc_seg_quoted)`.
 gc_seg_quoted() {
-  printf '%s\n' "$GC_CMD" | tr '|;' '\n\n' | sed 's/&&/\n/g' | while IFS= read -r _gcsq_raw; do
+  printf '%s\n' "$GC_CMD" | gc_split_ops | while IFS= read -r _gcsq_raw; do
     case "$_gcsq_raw" in
       *[\"\']*) printf '1\n' ;;
       *)        printf '0\n' ;;
@@ -530,7 +601,7 @@ gc_seg_quoted() {
 # scan that only ever saw quote-stripped text cannot tell an interpreter word
 # from the same word sitting inside somebody else's quoted argument.
 gc_seg_raw() {
-  printf '%s\n' "$GC_CMD" | tr '|;' '\n\n' | sed 's/&&/\n/g'
+  printf '%s\n' "$GC_CMD" | gc_split_ops
 }
 
 # gc_seg_is_ps <raw_segment> -- v4.3.0 (S-38, S-40, S-41): succeeds when the
@@ -538,15 +609,28 @@ gc_seg_raw() {
 # contains a `powershell|pwsh` word (optionally `.exe`, any case, any path
 # prefix, forward or back slashes).
 gc_seg_is_ps() {
-  local tok clean base lc
+  local tok clean base
   set -- $1
   while [ $# -gt 0 ]; do
     tok="$1"
     case "$tok" in *[\"\']*) return 1 ;; esac
-    clean=$(printf '%s' "$tok" | tr -d "\"'")
+    # v4.4.0: builtins only. A token holding a quote returned above, so the old
+    # `tr -d` was a no-op; the ASCII-only case classes replace `tr A-Z a-z`.
+    clean=$tok
     base=${clean##*/}; base=${base##*\\}
-    lc=$(printf '%s' "$base" | tr 'A-Z' 'a-z')
-    case "$lc" in powershell|powershell.exe|pwsh|pwsh.exe) return 0 ;; esac
+    case "$base" in
+      [Pp][Oo][Ww][Ee][Rr][Ss][Hh][Ee][Ll][Ll] | [Pp][Oo][Ww][Ee][Rr][Ss][Hh][Ee][Ll][Ll][.][Ee][Xx][Ee] | [Pp][Ww][Ss][Hh] | [Pp][Ww][Ss][Hh][.][Ee][Xx][Ee]) return 0 ;;
+    esac
+    # v4.3.2 6b review: the shell removes a backslash inside the word (pw\sh).
+    # Without a backslash this base equals the one above, so skip the pass.
+    case "$clean" in
+      *\\*)
+        base=${clean//\\/}; base=${base##*/}
+        case "$base" in
+          [Pp][Oo][Ww][Ee][Rr][Ss][Hh][Ee][Ll][Ll] | [Pp][Oo][Ww][Ee][Rr][Ss][Hh][Ee][Ll][Ll][.][Ee][Xx][Ee] | [Pp][Ww][Ss][Hh] | [Pp][Ww][Ss][Hh][.][Ee][Xx][Ee]) return 0 ;;
+        esac
+        ;;
+    esac
     shift
   done
   return 1
@@ -601,7 +685,7 @@ GC_PS_SPLIT
     seen="$seen|$p|"
     [ -f "$p" ] || continue
     n=$((n + 1)); [ "$n" -le 16 ] || break
-    head -c 16384 "$p" 2>/dev/null | LC_ALL=C sed '1s/^\xEF\xBB\xBF//' | grep -v '^[[:space:]]*#'
+    head -c 16384 "$p" 2>/dev/null | LC_ALL=C sed "1s/^$GC_BOM//" | LC_ALL=C grep -av '^[[:space:]]*#'
     printf '\n'
   done
   return 0
@@ -635,7 +719,9 @@ GC_PS_SPLIT
 #     flags and their values, bare wrapper words, absolute-path wrappers
 #     like `/usr/bin/env`) is skipped -- basename-matched against
 #     `bash|sh|source|.` and, on no match, simply passed over.
-#   - `bash`/`sh` match at ANY position in the run. `.`/`source` match ONLY
+#   - `bash`/`sh` (v4.3.2 6b: optionally `.exe`, any case, any path prefix with
+#     `/` or `\`, as gc_seg_is_ps does for powershell/pwsh) match at ANY position
+#     in the run. `.`/`source` match ONLY
 #     at position 1 (the segment's own head): both are shell BUILTINS, not
 #     PATH executables, so wrapping them through env/nice/timeout/nohup/
 #     command -- all of which execve a real binary -- does not actually
@@ -650,34 +736,46 @@ GC_PS_SPLIT
 # basename-compared, so this is not read even though gc_segments' own quote
 # stripping would have made $1 literally `bash` under the old $1-anchor code.
 gc_script_body() {
-  local seg="$1" cwd="$2" tok clean base path="" pos=1
+  local seg="$1" cwd="$2" tok clean base bb t2 hit path="" pos=1
   GC_SB=""
   set -- $seg
   while [ $# -gt 0 ]; do
     tok="$1"
     case "$tok" in *[\"\']*) return 0 ;; esac
     clean=$(printf '%s' "$tok" | tr -d "\"'")
-    base=${clean##*/}
-    case "$base" in
-      bash|sh) break ;;
-      .|source) [ "$pos" = 1 ] && break ;;
+    base=${clean##*/}; base=${base##*\\}
+    # v4.3.2 6b review: also the basename of the backslash-removed word (b\ash)
+    bb=${clean//\\/}; bb=${bb##*/}
+    hit=0
+    case "$bb" in
+      [Bb][Aa][Ss][Hh]|[Bb][Aa][Ss][Hh].[Ee][Xx][Ee]|[Ss][Hh]|[Ss][Hh].[Ee][Xx][Ee]) hit=1 ;;
     esac
+    case "$base" in
+      [Bb][Aa][Ss][Hh]|[Bb][Aa][Ss][Hh].[Ee][Xx][Ee]|[Ss][Hh]|[Ss][Hh].[Ee][Xx][Ee]) hit=1 ;;
+      .|source) [ "$pos" = 1 ] && hit=1 ;;
+    esac
+    if [ "$hit" = 1 ]; then
+      # v4.3.2 6b review 2: a runner word whose operand is not an existing file
+      # (`sudo -u s\h bash c.sh`: the operand of the first word is `bash`) does not
+      # end the walk -- it goes on to the next runner word.
+      path=""
+      for t2 in "${@:2}"; do
+        clean=$(printf '%s' "$t2" | tr -d "\"'")
+        case "$clean" in -*) continue ;; *) path="$clean"; break ;; esac
+      done
+      if [ -n "$path" ]; then
+        # S-3c: the answer goes to the global GC_SB (the caller reads it, no $(...)).
+        case "$path" in
+          /*|[A-Za-z]:*) ;;
+          *) path="$cwd/$path" ;;
+        esac
+        [ -f "$path" ] && break
+      fi
+    fi
     shift
     pos=$((pos + 1))
   done
   [ $# -gt 0 ] || return 0
-  shift
-  for tok in "$@"; do
-    clean=$(printf '%s' "$tok" | tr -d "\"'")
-    case "$clean" in -*) continue ;; *) path="$clean"; break ;; esac
-  done
-  [ -n "$path" ] || return 0
-  # S-3c: the answer goes to the global GC_SB (the caller reads it, no $(...)).
-  case "$path" in
-    /*|[A-Za-z]:*) ;;
-    *) path="$cwd/$path" ;;
-  esac
-  [ -f "$path" ] || return 0
   # v4.1.2 #8: whole-line comments (first non-blank character `#`) are never
   # commands, so they are stripped BEFORE the verb scan -- and only whole
   # lines: `"${BR#refs/heads/}"` on a code line keeps its `#`. The
@@ -685,7 +783,7 @@ gc_script_body() {
   # strip (spec §0): bash does not continue a line inside a comment, so
   # join-then-strip would merge `# note \<LF>git push origin main` into the
   # comment and delete the push.
-  GC_SB=$(head -c 16384 "$path" 2>/dev/null | grep -v '^[[:space:]]*#')
+  GC_SB=$(head -c 16384 "$path" 2>/dev/null | LC_ALL=C grep -av '^[[:space:]]*#')
 }
 
 GC_NL='
@@ -739,12 +837,23 @@ gc_dirchange_in() {
   printf '%s\n' "$t" | grep -qE "$GC_DIRVAR_RE|$GC_SRC_C_RE"
 }
 
+# gc_has_ghpr_merge <text> -- v4.3.2 6b review: succeeds when the text holds
+# the three words gh pr merge as typed, with quotes removed, or with quotes and
+# backslashes removed (the shell removes both before it runs the command).
+gc_has_ghpr_merge() {
+  local re='(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+merge' t
+  printf '%s\n' "$1" | grep -qE "$re" && return 0
+  t=$(printf '%s' "$1" | tr -d "\"'") && printf '%s\n' "$t" | grep -qE "$re" && return 0
+  t=$(printf '%s' "$1" | tr -d "\"'\\\\")
+  printf '%s\n' "$t" | grep -qE "$re"
+}
+
 # gc_text_has_gated <text> -- succeeds when the text holds a git commit/push/merge
 # or `gh pr merge` (the same recognisers the gates use); sets GC_GATED_VERB.
 gc_text_has_gated() {
   local t seg v
   t=$(printf '%s' "$1" | tr -d "\"'")
-  if printf '%s\n' "$t" | grep -qE '(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+merge'; then
+  if gc_has_ghpr_merge "$1"; then
     GC_GATED_VERB="gh pr merge"; return 0
   fi
   printf '%s\n' "$t" | gc_git_prefilter_text | grep -qE "$GC_GIT_WORD_RE" || return 1
@@ -754,7 +863,7 @@ gc_text_has_gated() {
       if gc_matches_subcommand "$seg" "$v"; then GC_GATED_VERB="$v"; return 0; fi
     done
   done <<GC_TG_SEGS
-$(printf '%s\n' "$t" | tr '|;' '\n\n' | sed 's/&&/\n/g')
+$(printf '%s\n' "$t" | gc_split_ops)
 GC_TG_SEGS
   return 1
 }
@@ -843,6 +952,16 @@ gc_dir_rule() {
   GC_CMD="$typed"
   for b in "${GC_BODIES[@]}"; do
     GC_CMD="$GC_CMD$GC_NL$b"
+    case "$b" in
+      *\$\'* | *\$\"*)
+        if printf '%s' "$b" | gc_dollar_quote &&
+          { printf '%s\n' "$b" | gc_git_prefilter_text | grep -qE "$GC_GIT_WORD_RE" ||
+            printf '%s\n' "$b" | grep -qE '(^|[^[:alnum:]_-])gh([^[:alnum:]_-]|$)'; }; then
+          echo "BLOCKED: $gate: a script this command runs uses \$'...' or \$\"...\" quoting with a git or gh word -- the gates cannot check it; use plain quotes, and printf for escapes." >&2
+          return 1
+        fi
+        ;;
+    esac
   done
   # ... refused when the command (or a script it runs) holds a gated verb
   if [ "$dc" = 1 ]; then
@@ -1715,6 +1834,8 @@ gc_matches_subcommand() {
         if (is_git(tok)) seen_git = 1
         next
       }
+      raw = tok
+      while ((i = index(tok, bs)) > 0) tok = substr(tok, 1, i - 1) substr(tok, i + 1)   # v4.3.2 6b: the shell removes a backslash (git com\mit runs commit)
       if (want_value) { want_value = 0; next }
       if (tok == "-C" || tok == "-c" || tok == "--config-env" || tok == "--git-dir" ||
           tok == "--work-tree" || tok == "--namespace" || tok == "--exec-path" ||
@@ -1722,7 +1843,7 @@ gc_matches_subcommand() {
       if (tok ~ /^-/) next                 # single-token global -- skip, not a match
       if (tok == verb) { print "MATCH"; exit }
       if (first_only) {                    # first non-global token was not the verb:
-        seen_git = is_git(tok) ? 1 : 0     # this invocation is done; restart at the NEXT git token
+        seen_git = is_git(raw) ? 1 : 0     # this invocation is done; restart at the NEXT git token
         want_value = 0                     # (a compound segment: git add -A && git commit)
         next
       }
@@ -1770,7 +1891,12 @@ gc_push_args() {
         if (is_git(tok)) seen_git = 1
         next
       }
-      if (found) { print tok; next }
+      if (found) {                         # v4.3.2 6b review: a refspec loses its backslashes (ma\in); a flag keeps its raw form
+        r = tok
+        while ((i = index(r, bs)) > 0) r = substr(r, 1, i - 1) substr(r, i + 1)
+        print (substr(r, 1, 1) == "-" || r ~ /[<>]/ ? tok : r); next
+      }
+      while ((i = index(tok, bs)) > 0) tok = substr(tok, 1, i - 1) substr(tok, i + 1)   # v4.3.2 6b: git pu\sh runs push
       if (want_value) { want_value = 0; next }
       if (tok == "-C" || tok == "-c" || tok == "--config-env" || tok == "--git-dir" ||
           tok == "--work-tree" || tok == "--namespace" || tok == "--exec-path" ||
@@ -1790,8 +1916,14 @@ gc_push_args() {
 gc_targets_main_ref() {
   gcta=$(gc_protected_alt "$2")
   [ -n "$gcta" ] || return 1
+  # an escaped redirection word (`\>`, `2\>`) is no refspec and no redirection to the shell, and the walk cannot
+  # tell which clause it belongs to: refused
+  printf '%s\n' "$1" | grep -qE '\\[<>]' && return 0
+  gcta_t=$(printf '%s' "$1" | tr -d '\\')   # v4.3.2 6b review 2: the shell removes a backslash (-\-all)
   printf '%s\n' "$1" | grep -qE '(^|[[:space:]])--(mirror|all)([[:space:]]|=|$)' && return 0
-  printf '%s\n' "$1" | grep -qE "(^|[[:space:]])(refs/heads/)?($gcta)([[:space:]]|\$)" && return 0
+  printf '%s\n' "$gcta_t" | grep -qE '(^|[[:space:]])--(mirror|all)([[:space:]]|=|$)' && return 0
+  # an optional leading `+` is a forced push of the same ref (git push origin +main)
+  printf '%s\n' "$1" | grep -qE "(^|[[:space:]])[+]?(refs/heads/)?($gcta)([[:space:]]|\$)" && return 0
   printf '%s\n' "$1" | grep -qE ":[[:space:]]*(refs/heads/)?($gcta)([[:space:]]|\$)"
 }
 

@@ -96,6 +96,8 @@
 # not end in "claude.md" exits 0 here, before lib/json.sh's json_have ever
 # runs, with no node/python3/jq spawned.
 
+trap '[ "$?" = 127 ] && exit 2' EXIT   # v4.4.0 C2: the old registration wrapper's 127->2, now in-hook (exec/source forms cannot wrap)
+
 lib="$(dirname "$0")/lib/json.sh"
 [ -f "$lib" ] || { echo "BLOCKED: $lib missing — run /sync-template step 6b (hooks/lib/json.sh)" >&2; exit 2; }
 # shellcheck source=lib/json.sh
@@ -199,27 +201,29 @@ dcm_norm() {
   printf '%s' "$dn"
 }
 
-json_have || {
+# v4.4.0 C3: one parser run for the verdict and every field (rc 2 = no parser, 1 = invalid).
+json_fields "$DCM_JSON" tool_name tool_input.file_path tool_input.notebook_path cwd
+DCM_RC=$?
+[ "$DCM_RC" = 2 ] && {
   echo "BLOCKED: deny-claude-md-writes: no JSON parser (node, python3 or jq) on PATH — this hook cannot inspect the call, and a call it cannot inspect is not one it can clear. Install one of the three." >&2
   exit 2
 }
-json_valid "$DCM_JSON" || {
+[ "$DCM_RC" = 0 ] || {
   echo "BLOCKED: deny-claude-md-writes: hook payload did not parse — this hook cannot inspect the call. Report the payload; do not work around it." >&2
   exit 2
 }
 
-DCM_TOOL=$(json_get "$DCM_JSON" tool_name)
+DCM_TOOL=${JF[0]}
 
 case "$DCM_TOOL" in
-  Edit|Write|MultiEdit) DCM_FIELD=file_path ;;
-  NotebookEdit)         DCM_FIELD=notebook_path ;;
+  Edit|Write|MultiEdit) DCM_RAW=${JF[1]} ;;
+  NotebookEdit)         DCM_RAW=${JF[2]} ;;
   *) exit 0 ;;
 esac
 
-DCM_RAW=$(json_get "$DCM_JSON" "tool_input.$DCM_FIELD")
 [ -n "$DCM_RAW" ] || exit 0
 
-DCM_CWD=$(json_get "$DCM_JSON" cwd)
+DCM_CWD=${JF[3]}
 [ -n "$DCM_CWD" ] || DCM_CWD="."
 
 DCM_ROOT=$(git -C "$DCM_CWD" rev-parse --show-toplevel 2>/dev/null)

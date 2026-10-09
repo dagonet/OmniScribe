@@ -21,6 +21,8 @@
 # §Architecture). Reads its payload through hooks/lib/json.sh, the shared
 # node/python3/jq reader the git gates use.
 
+trap '[ "$?" = 127 ] && exit 2' EXIT   # v4.4.0 C2: the old registration wrapper's 127->2, now in-hook (exec/source forms cannot wrap)
+
 # ⚠ NAMED `HOOK_PAYLOAD`, NOT `TOOL_INPUT`, AND THE RENAME IS THE POINT.
 # Until v3.0.0 this held the WHOLE stdin document while being called
 # `TOOL_INPUT`, and the string `tool_input` appeared nowhere in the file. That
@@ -38,7 +40,11 @@ jlib="$(dirname "$0")/lib/json.sh"
   exit 0
 }
 . "$jlib"
-json_have || { json_warn_no_parser require-skills-block "$(json_session "$HOOK_PAYLOAD")"; exit 0; }
+# v4.4.0 C3: one parser run for all three fields. rc 2 = no parser (WARN, exit 0, as json_have
+# was); rc 1 = invalid payload keeps the old behaviour of this hook: the fields read empty and
+# the shape witness below refuses it (it never called json_valid).
+json_fields "$HOOK_PAYLOAD" tool_name tool_input.prompt tool_input.subagent_type
+[ "$?" = 2 ] && { json_warn_no_parser require-skills-block "$(json_session "$HOOK_PAYLOAD")"; exit 0; }
 
 # ⚠ THE FIELDS ARE NESTED UNDER `tool_input`, AND READING THEM AT THE TOP LEVEL
 # MEANT THIS HOOK HAD NEVER FIRED (v3.0.0).
@@ -106,7 +112,7 @@ json_have || { json_warn_no_parser require-skills-block "$(json_session "$HOOK_P
 # NOT treated as "some other tool" -- that is the shape anomaly this item
 # exists to catch (the harness never omits tool_name), so it falls through to
 # the shape witness below and is refused there.
-TOOL_NAME=$(json_get "$HOOK_PAYLOAD" tool_name)
+TOOL_NAME=${JF[0]:-}
 case "$TOOL_NAME" in
   Agent|Task|"") ;;
   *) exit 0 ;;
@@ -117,12 +123,12 @@ esac
 # is not a shape change). Empty/absent means the payload is not the shape this
 # hook reads; refuse it fail-closed rather than fall through with an empty
 # SUBAGENT_TYPE the way the dead top-level fallback used to.
-PROMPT=$(json_get "$HOOK_PAYLOAD" tool_input.prompt)
+PROMPT=${JF[1]:-}
 if [ -z "$PROMPT" ]; then
   echo "BLOCKED: Agent payload carries no tool_input.prompt -- the shape this hook reads is not what arrived; refusing (fail closed). Keys present (any depth): $(printf '%s' "$HOOK_PAYLOAD" | grep -oE '"[a-zA-Z_]+":' | tr -d '":' | tr '\n' ' ')" >&2
   exit 2
 fi
-SUBAGENT_TYPE=$(json_get "$HOOK_PAYLOAD" tool_input.subagent_type)
+SUBAGENT_TYPE=${JF[2]:-}
 
 case "$SUBAGENT_TYPE" in
   # Any language coder, including ones a project adds itself (cpp-coder, …).
