@@ -13,8 +13,8 @@
     "TECH_STACK": "Python 3.11, uv"
   },
   "manifest_version": 4,
-  "template_version": "v4.4.1",
-  "template_commit": "2cea65700e738bb9f7d616fb2bb5e0bb4fafca83",
+  "template_version": "v4.4.2",
+  "template_commit": "9dd3b8b955b8306d6f0f4bacfeeaba44401faa4f",
   "requires_server": ">=4.1.0",
   "files": {
     ".claude/agent-grants.json": {
@@ -123,7 +123,7 @@
       "ownership": "template"
     },
     "hooks/git-pre-push.sh": {
-      "hash": "sha256:e052e6328010f62503a1c6ef7e972cf21af1202eab63bbe77a183344bb224759",
+      "hash": "sha256:745ac0e924a473fe076db57d1cfe5ebbe0e1b5260d0a8967e4b68889b53ffbd1",
       "ownership": "template"
     },
     "hooks/lib/agent-model.sh": {
@@ -180,12 +180,5 @@
     }
   },
   "instructions_file": ".claude/project-instructions.md",
-  "agent_grants": ".claude/agent-grants.json",
-  "pending_once_notes": [
-    {
-      "file": "PROJECT_CONTEXT.md",
-      "from_commit": "b8608a80258175f3c4faaa9db983876ef024081f",
-      "to_commit": "2cea65700e738bb9f7d616fb2bb5e0bb4fafca83"
-    }
-  ]
+  "agent_grants": ".claude/agent-grants.json"
 }
